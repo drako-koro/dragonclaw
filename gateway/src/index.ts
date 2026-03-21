@@ -184,7 +184,7 @@ class DragonClawGateway {
       const skillsRefPath = join(ROOT_DIR, 'workspace', 'SKILLS.txt');
       const catalog = this.skills.getSkillCatalog();
       const byCategory = this.skills.getSkillsByCategory();
-      let refContent = 'AUTHORCLAW SKILLS REFERENCE\n';
+      let refContent = 'DRAGONCLAW SKILLS REFERENCE\n';
       refContent += `Auto-generated on startup — ${catalog.length} skills loaded\n`;
       refContent += '═'.repeat(60) + '\n\n';
 
@@ -1699,9 +1699,9 @@ class DragonClawGateway {
             ).catch(reject);
           });
 
-          // Retry once with 'general' routing if response is too short
-          if (!aiResponse || aiResponse.length < 50) {
-            console.log(`  ↻ Step "${activeStep.label}" got short response — retrying with general routing...`);
+          // Retry once with 'general' routing if the first response is insufficient
+          if (gateway.isInsufficientAIResponse(aiResponse)) {
+            console.log(`  ↻ Step "${activeStep.label}" got insufficient response — retrying with general routing...`);
             aiResponse = '';
             await new Promise<void>((resolve, reject) => {
               gateway.handleMessage(
@@ -1710,7 +1710,8 @@ class DragonClawGateway {
                 (response) => { aiResponse = response; resolve(); },
                 projectContext,
                 'general',
-                projectProvider
+                projectProvider,
+                projectMessages
               ).catch(reject);
             });
           }

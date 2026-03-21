@@ -25,7 +25,7 @@ npx tsx gateway/src/index.ts
 You should see:
 
 ```
-  DragonClaw v3.0.0
+  DragonClaw v5.0.0
   ═══════════════════════════════════
   The Ember-Forged AI Writing Agent
   ...

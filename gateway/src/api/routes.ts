@@ -12,6 +12,13 @@ import multer from 'multer';
 import { generateDocxBuffer } from '../services/docx-export.js';
 import { generateEpubBuffer } from '../services/epub-export.js';
 
+function isInsufficientAIResponse(text?: string): boolean {
+  const cleaned = String(text || '').replace(/```[\s\S]*?```/g, ' ').trim();
+  if (!cleaned) return true;
+  const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
+  return wordCount < 8 && cleaned.length < 40;
+}
+
 export function createAPIRoutes(app: Application, gateway: any, rootDir?: string): void {
   const services = gateway.getServices();
   const baseDir = rootDir || process.cwd();
@@ -907,21 +914,23 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
           activeStep.taskType || undefined  // Use step's own taskType for routing
         );
 
-        // Retry once with 'general' routing if the response is too short
-        // This catches cases where a premium/mid provider fails but free providers work fine
-        if (!response || response.length < 50) {
-          console.log(`  ↻ Step "${activeStep.label}" got short response — retrying with general routing...`);
+        // Retry once with curated project messages if the response is insufficient
+        const projectMessages = await engine.buildProjectMessages(currentProject, activeStep, userMessage);
+        if (isInsufficientAIResponse(response)) {
+          console.log(`  ↻ Step "${activeStep.label}" got insufficient response — retrying with general routing...`);
           response = '';
           await gateway.handleMessage(
             userMessage,
             'project-engine',
             (text: string) => { response = text; },
             projectContext,
-            'general'  // Force free-tier routing (Gemini first)
+            'general',
+            undefined,
+            projectMessages
           );
         }
 
-        if (!response || response.length < 50) {
+        if (isInsufficientAIResponse(response)) {
           engine.failStep(currentProject.id, activeStep.id, 'Empty or too-short response from AI');
           results.push({ step: activeStep.label, success: false, error: 'Insufficient AI response' });
           break;
@@ -2277,10 +2286,12 @@ ${sourceCode.substring(0, 15000)}
     if (!persona) return res.status(404).json({ error: 'Persona not found' });
 
     try {
-      const provider = services.aiRouter?.selectProvider('general');
-      if (!provider) return res.status(503).json({ error: 'No AI provider available. Configure an API key in Settings first.' });
+      const provider = services.aiRouter?.selectProvider('planning');
+      if (!provider) return res.status(503).json({ error: 'No AI provider available. Configure DragonClaw AI settings first.' });
       const result = await services.aiRouter.complete({
         provider: provider.id,
+        taskType: 'planning',
+        think: Boolean(services.config.get('ai.ollama.thinking.planning', true)),
         system: 'You are a publishing industry expert who creates compelling author bios.',
         messages: [{
           role: 'user' as const,

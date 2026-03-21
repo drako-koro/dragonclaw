@@ -88,6 +88,38 @@ export class ConfigService {
     await writeFile(userPath, JSON.stringify(this.userOverrides, null, 2), 'utf-8');
   }
 
+  private normalizeDragonClawAIConfig(): void {
+    const ai = this.config.ai || (this.config.ai = {});
+    const ollama = ai.ollama || (ai.ollama = {});
+    const defaultModel = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
+    ollama.defaultModel = defaultModel;
+    ollama.model = defaultModel;
+    ollama.maxTokens = ollama.maxTokens || 4096;
+    ollama.requestTimeoutMs = ollama.requestTimeoutMs || 600000;
+    ollama.models = {
+      planning: ollama.models?.planning || 'deepseek-r1:32b',
+      drafting: ollama.models?.drafting || 'qwen3.5:35b',
+      critique: ollama.models?.critique || 'deepseek-r1:32b',
+      rewrite: ollama.models?.rewrite || 'mistral-small3.2:24b',
+      final: ollama.models?.final || 'deepseek-r1:32b',
+    };
+    ollama.thinking = {
+      planning: typeof ollama.thinking?.planning === 'boolean' ? ollama.thinking.planning : true,
+      drafting: typeof ollama.thinking?.drafting === 'boolean' ? ollama.thinking.drafting : false,
+      critique: typeof ollama.thinking?.critique === 'boolean' ? ollama.thinking.critique : true,
+      rewrite: typeof ollama.thinking?.rewrite === 'boolean' ? ollama.thinking.rewrite : false,
+      final: typeof ollama.thinking?.final === 'boolean' ? ollama.thinking.final : true,
+    };
+    ai.defaultProvider = ai.defaultProvider || 'ollama';
+    ai.providers = {
+      planning: ai.providers?.planning || ai.defaultProvider,
+      drafting: ai.providers?.drafting || ai.defaultProvider,
+      critique: ai.providers?.critique || ai.defaultProvider,
+      rewrite: ai.providers?.rewrite || ai.defaultProvider,
+      final: ai.providers?.final || ai.defaultProvider,
+    };
+  }
+
   private deepMerge(target: any, source: any): any {
     const output = { ...target };
     for (const key of Object.keys(source)) {

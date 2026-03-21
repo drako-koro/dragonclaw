@@ -2204,7 +2204,7 @@ function openPersonaModal(persona) {
         '<div class="form-group"><label>Subgenre</label><input type="text" id="pmSubgenre" value="' + esc(persona ? persona.subgenre || '' : '') + '" placeholder="e.g. Epic Fantasy"></div>' +
       '</div>' +
       '<div class="form-group">' +
-        '<label>Voice Description</label>' +
+        '<label>Voice Description</label><div class="muted" style="margin:-4px 0 8px 0;font-size:12px;">Voice Description is carried through every project step.</div>' +
         '<textarea id="pmVoice" rows="3" placeholder="Describe the writing voice...">' + esc(persona ? persona.voiceDescription || '' : '') + '</textarea>' +
       '</div>' +
       '<div class="form-group">' +

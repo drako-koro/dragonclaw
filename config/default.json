@@ -13,7 +13,24 @@
     "ollama": {
       "enabled": true,
       "endpoint": "http://localhost:11434",
-      "model": "qwen3.5:9b"
+      "model": "qwen3.5:35b",
+      "defaultModel": "qwen3.5:35b",
+      "models": {
+        "planning": "deepseek-r1:32b",
+        "drafting": "qwen3.5:35b",
+        "critique": "deepseek-r1:32b",
+        "rewrite": "mistral-small3.2:24b",
+        "final": "deepseek-r1:32b"
+      },
+      "thinking": {
+        "planning": true,
+        "drafting": false,
+        "critique": true,
+        "rewrite": false,
+        "final": true
+      },
+      "maxTokens": 4096,
+      "requestTimeoutMs": 600000
     },
     "gemini": {
       "model": "gemini-2.5-flash"

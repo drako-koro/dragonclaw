@@ -63,9 +63,9 @@ const TASK_TIERS: Record<string, TaskTier> = {
 
 // Provider preference order per tier (first available wins)
 const TIER_ROUTING: Record<TaskTier, string[]> = {
-  free:    ['gemini', 'ollama', 'deepseek', 'openai', 'claude'],
-  mid:     ['gemini', 'deepseek', 'claude', 'openai', 'ollama'],
-  premium: ['claude', 'openai', 'gemini', 'deepseek', 'ollama'],
+  free:    ['ollama', 'claude', 'gemini', 'deepseek', 'openai'],
+  mid:     ['ollama', 'claude', 'deepseek', 'openai', 'gemini'],
+  premium: ['claude', 'ollama', 'openai', 'deepseek', 'gemini'],
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -150,7 +150,7 @@ export class AIRouter {
 
     // ── Anthropic Claude (PAID) ──
     const claudeKey = await this.vault.get('anthropic_api_key');
-    if (claudeKey) {
+    if (claudeKey && this.config.claude?.enabled !== false) {
       this.providers.set('claude', {
         id: 'claude',
         name: 'Anthropic Claude',
@@ -202,6 +202,23 @@ export class AIRouter {
     }
   }
 
+  private getLaneForTaskType(taskType: string): 'planning' | 'drafting' | 'critique' | 'rewrite' | 'final' {
+    const laneMap: Record<string, 'planning' | 'drafting' | 'critique' | 'rewrite' | 'final'> = {
+      general: 'planning',
+      research: 'planning',
+      marketing: 'planning',
+      outline: 'planning',
+      book_bible: 'planning',
+      creative_writing: 'drafting',
+      revision: 'critique',
+      style_analysis: 'critique',
+      consistency: 'critique',
+      rewrite: 'rewrite',
+      final_edit: 'final',
+    };
+    return laneMap[taskType] || 'planning';
+  }
+
   /**
    * Select the best provider for a given task type using tiered routing.
    * If preferredId is set (per-project override), use that provider directly.
@@ -213,8 +230,21 @@ export class AIRouter {
       if (pref?.available) {
         return pref;
       }
-      // Preferred provider not available — fall through to tier routing
-      console.warn(`[router] Preferred provider '${preferredId}' not available, falling back to tier routing`);
+      console.warn(`[router] Preferred provider '${preferredId}' not available, falling back to configured routing`);
+    }
+
+    const lane = this.getLaneForTaskType(taskType);
+    const configuredProviderId =
+      this.config.providers?.[lane] ||
+      this.config.defaultProvider;
+
+    if (configuredProviderId) {
+      const configured = this.providers.get(configuredProviderId);
+      if (configured?.available) {
+        if (configured.tier === 'free' || !this.costs.isOverBudget()) {
+          return configured;
+        }
+      }
     }
 
     const tier = TASK_TIERS[taskType] || TASK_TIERS.general;
@@ -223,7 +253,6 @@ export class AIRouter {
     for (const providerId of preference) {
       const provider = this.providers.get(providerId);
       if (provider?.available) {
-        // Check budget — skip non-free providers if over budget
         if (provider.tier !== 'free' && this.costs.isOverBudget()) {
           continue;
         }
@@ -231,10 +260,9 @@ export class AIRouter {
       }
     }
 
-    // Absolute fallback
     const any = Array.from(this.providers.values()).find(p => p.available);
     if (!any) {
-      throw new Error('No AI providers available. Please configure at least Ollama (free) or an API key.');
+      throw new Error('No AI providers available. Please configure at least Ollama or Claude.');
     }
     return any;
   }
@@ -294,30 +322,19 @@ export class AIRouter {
 
   private getModelForRequest(request: CompletionRequest, provider: AIProvider): string {
     if (request.model) return request.model;
-    const laneMap: Record<string, string> = {
-      general: 'planning',
-      research: 'planning',
-      marketing: 'planning',
-      outline: 'planning',
-      book_bible: 'planning',
-      creative_writing: 'drafting',
-      revision: 'critique',
-      style_analysis: 'critique',
-      consistency: 'critique',
-      rewrite: 'rewrite',
-      final_edit: 'final',
-    };
-    const lane = laneMap[request.taskType || 'general'] || 'planning';
+    const lane = this.getLaneForTaskType(request.taskType || 'general');
+    if (provider.id === 'claude') {
+      return this.config.claude?.models?.[lane] || this.config.claude?.defaultModel || provider.model;
+    }
     return this.config.ollama?.models?.[lane] || this.config.ollama?.defaultModel || this.config.ollama?.model || provider.model || 'qwen3.5:35b';
   }
 
-  private getThinkingForRequest(request: CompletionRequest): boolean | 'low' | 'medium' | 'high' | undefined {
+  private getThinkingForRequest(request: CompletionRequest, providerId?: string): boolean | 'low' | 'medium' | 'high' | undefined {
     if (request.think !== undefined) return request.think;
-    const laneMap: Record<string, string> = {
-      general: 'planning', research: 'planning', marketing: 'planning', outline: 'planning', book_bible: 'planning',
-      creative_writing: 'drafting', revision: 'critique', style_analysis: 'critique', consistency: 'critique', rewrite: 'rewrite', final_edit: 'final',
-    };
-    const lane = laneMap[request.taskType || 'general'] || 'planning';
+    const lane = this.getLaneForTaskType(request.taskType || 'general');
+    if (providerId === 'claude') {
+      return this.config.claude?.thinking?.[lane];
+    }
     return this.config.ollama?.thinking?.[lane];
   }
   /**
@@ -344,10 +361,11 @@ export class AIRouter {
     request: CompletionRequest
   ): Promise<CompletionResponse> {
     const model = this.getModelForRequest(request, provider);
-    const think = this.getThinkingForRequest(request);
+    const think = this.getThinkingForRequest(request, provider.id);
     const response = await fetch(`${provider.endpoint}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(this.config.ollama?.requestTimeoutMs || 600000),
       body: JSON.stringify({
         model,
         messages: [
@@ -364,8 +382,12 @@ export class AIRouter {
     });
 
     const data = await response.json() as any;
+    if (!response.ok) {
+      const errText = data?.error || data?.message?.content || response.statusText || 'Ollama request failed';
+      throw new Error(`Ollama error (${model}): ${errText}`);
+    }
     return {
-      text: data.message?.content || '',
+      text: String(data.message?.content || '').trim(),
       tokensUsed: (data.prompt_eval_count || 0) + (data.eval_count || 0),
       estimatedCost: 0,
       provider: 'ollama',
