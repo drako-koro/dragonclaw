@@ -45,10 +45,10 @@ Tell it what you want. It figures out the steps, picks the right skills, and exe
 ```
 User: "/novel a small-town romance under pen name Lily Hart"
 
-DragonClaw: "Pipeline created — 6 phases, 48 steps total"
+DragonClaw: "Pipeline created — 6 phases, auto-generated step count based on chapter target"
   Phase 1: Book Planning    (6 steps)  — market analysis, premise, characters, outline, synopsis
   Phase 2: Book Bible       (5 steps)  — world-building, character bible, continuity, themes, style
-  Phase 3: Book Production  (20 steps) — write + self-review per chapter
+  Phase 3: Book Production  (76 steps) — write + self-review + rewrite per chapter
   Phase 4: Deep Revision    (21 steps) — 3-pass editing + AI beta readers
   Phase 5: Format & Export  (4 steps)  — front matter, back matter, DOCX, EPUB
   Phase 6: Book Launch      (6 steps)  — blurb, Amazon description, keywords, ad copy, social posts
@@ -189,7 +189,7 @@ DragonClaw: 📊 Workspace Usage: 2.1 MB (67 files)
 Open `http://localhost:3847` to access the web dashboard — a sidebar-driven interface with 5 panels:
 
 - **Home** — Quick stats (words today, active projects, heartbeat status, personas), active project cards, full chat interface with slash command parity (all Telegram commands work in chat), today's writing progress bar, idle task count
-- **Projects** — 7 template tiles (Book Planning, Book Bible, Book Production, Deep Revision, Format & Export, Book Launch, Full Novel Pipeline) + Custom AI-planned. Projects auto-execute on creation — no manual start needed. Project list with status filters, inline detail views with step progress, file downloads (MD + DOCX), and compile controls
+- **Projects** — 7 template tiles (Book Planning, Book Bible, Book Production, Deep Revision, Format & Export, Book Launch, Full Novel Pipeline) + Custom AI-planned. Projects auto-execute on creation — no manual start needed. Book Production now runs write → self-review → rewrite for each chapter before compile. Project list with status filters, inline detail views with step progress, file downloads (MD + DOCX), and compile controls
 - **Personas** — Author persona card grid with pen names, genres, style tags, and TTS voice. Create manually or generate with AI. Assign personas to projects for voice-consistent writing. Personas persist across updates with auto-backup
 - **Library** — Document uploads and compiled manuscripts. Download DOCX and EPUB exports
 - **Settings** — API keys (vault-encrypted), Telegram bot config, voice/TTS presets, research domain allowlist, autonomous heartbeat mode with configurable word goal, editable idle task queue (CRUD)

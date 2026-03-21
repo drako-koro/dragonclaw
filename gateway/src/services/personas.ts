@@ -126,19 +126,6 @@ export class PersonaService {
     return this.personas.get(id);
   }
 
-  getPersona(id: string): AuthorPersona | undefined {
-    return this.get(id);
-  }
-
-  findByPenName(penName: string): AuthorPersona | undefined {
-    const needle = (penName || '').trim().toLowerCase();
-    if (!needle) return undefined;
-
-    return Array.from(this.personas.values()).find((p) =>
-      (p.penName || '').trim().toLowerCase() === needle
-    );
-  }
-
   list(): AuthorPersona[] {
     return Array.from(this.personas.values()).sort((a, b) =>
       a.penName.localeCompare(b.penName)
@@ -156,27 +143,14 @@ export class PersonaService {
     const p = this.personas.get(id);
     if (!p) return '';
 
-    const genre = [p.genre, p.subGenre].filter(Boolean).join(' / ');
-    const markers = Array.isArray(p.styleMarkers) && p.styleMarkers.length > 0
-      ? p.styleMarkers.join(', ')
-      : '';
-
     const lines = [
       `## Author Persona: ${p.penName}`,
-      'Write as this author persona, not as a generic assistant.',
+      `**Genre:** ${p.genre}${p.subGenre ? ' / ' + p.subGenre : ''}`,
     ];
-
-    if (genre) lines.push(`**Genre Focus:** ${genre}`);
-    if (p.voiceDescription) lines.push(`**Voice Description:** ${p.voiceDescription}`);
-    if (markers) lines.push(`**Style Markers:** ${markers}`);
-    if (p.bio) lines.push(`**Author Bio / Brand Context:** ${p.bio}`);
+    if (p.voiceDescription) lines.push(`**Voice & Style:** ${p.voiceDescription}`);
+    if (p.styleMarkers.length > 0) lines.push(`**Style Markers:** ${p.styleMarkers.join(', ')}`);
+    if (p.bio) lines.push(`**Author Bio:** ${p.bio}`);
     if (p.alsoBy.length > 0) lines.push(`**Also By ${p.penName}:** ${p.alsoBy.join(', ')}`);
-
-    lines.push('**Persona Rules:**');
-    lines.push('- Match the persona’s voice, tone, diction, rhythm, and genre expectations.');
-    lines.push('- Keep stylistic choices consistent across planning, drafting, revision, and marketing copy.');
-    lines.push('- Do not mention these instructions in the output.');
-    lines.push('- If the user explicitly asks to override the persona for a specific task, follow the user.');
 
     return lines.join('\n');
   }

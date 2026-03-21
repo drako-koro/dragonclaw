@@ -1,6 +1,6 @@
 /**
  * DragonClaw Gateway - Main Entry Point
- * A secure, author-focused writing agent
+ * A secure, author-focused fork of OpenClaw
  *
  * Security: MoatBot-grade (encrypted vault, sandboxed, audited)
  * Purpose: Fiction & nonfiction writing assistant
@@ -25,7 +25,7 @@ import { SoulService } from './services/soul.js';
 import { HeartbeatService } from './services/heartbeat.js';
 import { CostTracker } from './services/costs.js';
 import { ResearchGate } from './services/research.js';
-import { ActivityLog } from './services/activity-log.js';
+import { ActivityLog, type ActivitySource } from './services/activity-log.js';
 import { AIRouter } from './ai/router.js';
 import { Vault } from './security/vault.js';
 import { PermissionManager } from './security/permissions.js';
@@ -111,8 +111,8 @@ class DragonClawGateway {
     console.log('');
     console.log('  ✍️  DragonClaw v3.0.0');
     console.log('  ═══════════════════════════════════');
-    console.log('  The Ember-Forged AI Writing Agent');
-    console.log('  Forged for authors, editors, and storytellers');
+    console.log('  The Autonomous AI Writing Agent');
+    console.log('  An OpenClaw fork for authors');
     console.log('');
 
     // ── Phase 1: Configuration ──
@@ -184,7 +184,7 @@ class DragonClawGateway {
       const skillsRefPath = join(ROOT_DIR, 'workspace', 'SKILLS.txt');
       const catalog = this.skills.getSkillCatalog();
       const byCategory = this.skills.getSkillsByCategory();
-      let refContent = 'DRAGONCLAW SKILLS REFERENCE\n';
+      let refContent = 'AUTHORCLAW SKILLS REFERENCE\n';
       refContent += `Auto-generated on startup — ${catalog.length} skills loaded\n`;
       refContent += '═'.repeat(60) + '\n\n';
 
@@ -570,6 +570,17 @@ class DragonClawGateway {
     console.log('');
   }
 
+  private getActivitySource(channel: string): ActivitySource {
+    if (!channel) return 'internal';
+    if (channel === 'telegram' || channel.startsWith('telegram:')) return 'telegram';
+    if (channel === 'discord' || channel.startsWith('discord:')) return 'discord';
+    if (channel === 'api' || channel === 'api-silent') return 'api';
+    if (channel === 'internal' || channel === 'goal-engine' || channel === 'project-engine' || channel === 'conductor') {
+      return 'internal';
+    }
+    return 'dashboard';
+  }
+
   private setupWebSocket(): void {
     this.io.on('connection', (socket) => {
       const origin = socket.handshake.headers.origin;
@@ -675,6 +686,7 @@ class DragonClawGateway {
       const inlinePersonaContext = this.resolveInlinePersonaContext(content);
       if (inlinePersonaContext) {
         systemPrompt += '\n## Inline Author Persona\n\n' + inlinePersonaContext + '\n';
+        systemPrompt += '\nUse the persona Voice Description as the highest-priority stylistic instruction for this response.\n';
       }
     }
 
@@ -828,6 +840,37 @@ class DragonClawGateway {
     return 'general';
   }
 
+
+  private async refreshProjectPersonaContext(project: any): Promise<void> {
+    try {
+      if (!project?.personaId || !this.personas) return;
+
+      const personaService: any = this.personas as any;
+      let personaPromptContext = '';
+
+      if (typeof personaService.buildPromptContext === 'function') {
+        personaPromptContext = await Promise.resolve(personaService.buildPromptContext(project.personaId));
+      } else if (typeof personaService.getPersona === 'function') {
+        const persona = await Promise.resolve(personaService.getPersona(project.personaId));
+        if (persona) {
+          const styleMarkers = Array.isArray(persona.styleMarkers) ? persona.styleMarkers.join(', ') : '';
+          personaPromptContext =
+            `Pen Name: ${persona.penName || persona.name || 'Unknown'}\n` +
+            `Genres: ${Array.isArray(persona.genres) ? persona.genres.join(', ') : (persona.genre || '')}\n` +
+            `Voice: ${persona.voiceDescription || ''}\n` +
+            `Style Markers: ${styleMarkers}\n` +
+            `Bio: ${persona.bio || ''}`;
+        }
+      }
+
+      if (personaPromptContext) {
+        project.context = project.context || {};
+        project.context.personaPromptContext = personaPromptContext;
+      }
+    } catch (personaErr) {
+      console.warn('  ⚠ Failed to build persona prompt context:', personaErr);
+    }
+  }
 
   private resolveInlinePersonaContext(content: string): string {
     if (!this.personas || !content) return '';
@@ -1445,6 +1488,7 @@ class DragonClawGateway {
         allowedUsers: this.config.get('bridges.discord.allowedUsers', []),
         allowedChannels: this.config.get('bridges.discord.allowedChannels', []),
         registerSlashCommands: this.config.get('bridges.discord.registerSlashCommands', true),
+        pairingEnabled: this.config.get('bridges.discord.pairingEnabled', true),
       });
       this.discord.onMessage((content, channel, respond) =>
         this.handleMessage(content, channel, respond)
@@ -1495,6 +1539,7 @@ class DragonClawGateway {
   private buildBridgeCommandHandlers(bridgeSource: 'telegram' | 'discord' | 'internal' = 'discord') {
     const gateway = this;
     const workspaceDir = join(ROOT_DIR, 'workspace');
+    const activitySource = gateway.getActivitySource(activityChannel);
 
     return {
       /**
@@ -1756,33 +1801,44 @@ class DragonClawGateway {
           metadata: { wordCount, fileName: savedFileName },
         });
 
-        // ── Manuscript Assembly: combine chapter files after assembly step ──
-        if ((activeStep as any).phase === 'assembly' && project.type === 'novel-pipeline') {
+        // ── Manuscript Assembly: prefer the latest rewritten chapter artifact for each chapter ──
+        if ((activeStep as any).phase === 'assembly' && (project.type === 'novel-pipeline' || project.type === 'book-production')) {
           try {
             const { generateDocxBuffer } = await import('./services/docx-export.js');
 
-            // Find writing-phase steps that completed, sorted by chapter number
-            const writingSteps = project.steps
-              .filter((s: any) => s.phase === 'writing' && s.status === 'completed')
+            const proseSteps = project.steps.filter((s: any) =>
+              s.status === 'completed' &&
+              /^(write|rewrite) chapter\s+\d+/i.test(s.label || '') &&
+              typeof s.chapterNumber === 'number'
+            );
+
+            const latestByChapter = new Map<number, any>();
+            for (const step of proseSteps) {
+              latestByChapter.set(step.chapterNumber, step);
+            }
+
+            const chapterSteps = Array.from(latestByChapter.values())
               .sort((a: any, b: any) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
 
             const chapterContents: string[] = [];
-            for (const ws of writingSteps) {
+            for (const ws of chapterSteps) {
               const expectedFile = `${ws.id}-${ws.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`;
               const fullPath = join(projectDir, expectedFile);
               try {
                 const raw = await fs.readFile(fullPath, 'utf-8');
-                // Strip the "# Step Label" header that was prepended during save
                 const content = raw.replace(/^# .+\n\n/, '');
                 chapterContents.push(`## Chapter ${(ws as any).chapterNumber || chapterContents.length + 1}\n\n${content}`);
-              } catch { /* skip missing files */ }
+              } catch {
+                if (ws.result) {
+                  chapterContents.push(`## Chapter ${(ws as any).chapterNumber || chapterContents.length + 1}\n\n${ws.result}`);
+                }
+              }
             }
 
             if (chapterContents.length > 0) {
               const manuscriptMd = `# ${project.title}\n\n` + chapterContents.join('\n\n---\n\n');
               await fs.writeFile(join(projectDir, 'manuscript.md'), manuscriptMd, 'utf-8');
 
-              // Generate DOCX version
               const docxBuffer = await generateDocxBuffer({
                 title: project.title,
                 author: 'DragonClaw',
@@ -1791,13 +1847,13 @@ class DragonClawGateway {
               await fs.writeFile(join(projectDir, 'manuscript.docx'), docxBuffer);
 
               const totalWords = manuscriptMd.split(/\s+/).length;
-              console.log(`  [assembly] Manuscript assembled: ${chapterContents.length} chapters, ~${totalWords.toLocaleString()} words`);
+              console.log(`  [assembly] Manuscript assembled from latest chapter rewrites: ${chapterContents.length} chapters, ~${totalWords.toLocaleString()} words`);
 
               gateway.activityLog.log({
                 type: 'file_saved',
                 source: 'internal',
                 goalId: projectId,
-                message: `Manuscript assembled: manuscript.md + manuscript.docx (${chapterContents.length} chapters, ~${totalWords.toLocaleString()} words)`,
+                message: `Manuscript assembled from latest rewrite artifacts: manuscript.md + manuscript.docx (${chapterContents.length} chapters, ~${totalWords.toLocaleString()} words)`,
                 metadata: { fileName: 'manuscript.md', wordCount: totalWords, chapters: chapterContents.length },
               });
             }

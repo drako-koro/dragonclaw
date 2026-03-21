@@ -352,7 +352,7 @@ If an author persona is assigned, integrate their voice profile into this guide.
   {
     type: 'book-production',
     label: 'Book Production',
-    description: 'Write chapters sequentially with full context injection — write, self-review, and compile',
+    description: 'Write chapters sequentially with full context injection — write, self-review, rewrite, and compile',
     steps: [], // Dynamic: chapters auto-generated based on config (like novel-pipeline writing phase)
   },
 
@@ -1070,10 +1070,36 @@ export class ProjectEngine {
       if (personaPromptContext) {
         project.context = project.context || {};
         project.context.personaPromptContext = personaPromptContext;
+
+        const voiceMatch = String(personaPromptContext).match(/\*\*Primary Voice Description \(highest priority\):\*\*\s*(.+)/i)
+          || String(personaPromptContext).match(/\*\*Voice Description:\*\*\s*(.+)/i);
+        if (voiceMatch?.[1]) {
+          project.context.personaVoiceDescription = voiceMatch[1].trim();
+        }
       }
     } catch (error) {
       console.warn('  ⚠ Failed to resolve persona prompt context for project:', error);
     }
+  }
+
+  private buildPersonaStepDirective(project: Project, step: ProjectStep): string {
+    const personaPromptContext = project.context?.personaPromptContext || project.context?.personaContext;
+    if (!personaPromptContext) return '';
+
+    const voiceDescription = project.context?.personaVoiceDescription
+      ? `Primary voice description: ${project.context.personaVoiceDescription}\n`
+      : '';
+
+    const stepKind = step.taskType || 'general';
+
+    return (
+      `Mandatory persona directive for this step:\n` +
+      `${voiceDescription}` +
+      `Apply the assigned author persona voice to this ${stepKind} step.\n` +
+      `Do not drift into a generic assistant voice.\n` +
+      `Preserve the persona's diction, rhythm, tone, imagery, and narrative attitude.\n` +
+      `If this step is critique or revision, keep the feedback and rewritten prose in the same persona voice unless the user explicitly asks otherwise.`
+    );
   }
 
   // ── Novel Pipeline ──
@@ -1189,83 +1215,71 @@ export class ProjectEngine {
     addStep('Scene breakdowns', 'outline', 'outline',
       `Expand the ${chapters}-chapter outline into scene-by-scene breakdowns for "${title}".\n\nFor each chapter, create 2-4 scenes with:\n- Scene goal and conflict\n- Key dialogue moments or reveals\n- Emotional beats\n- Estimated word count per scene\n\nTarget ~${wordsPerChapter} words per chapter. Focus especially on the inciting incident, midpoint twist, and climax sequence.`,
       { skill: 'outline' }
-    );
-
-    // ── Phase: Writing (chapter draft → critique → rewrite loop) ──
+    );    // ── Phase: Writing (3N steps, write → self-review → rewrite per chapter) ──
     for (let ch = 1; ch <= chapters; ch++) {
       addStep(`Write Chapter ${ch}`, 'writing', 'creative_writing',
-        `Write Chapter ${ch} of "${title}".\n\nInstructions:\n- Follow the outline beats and scene breakdowns for this chapter\n- Check the Book Bible for character consistency\n- You MUST write at least ${wordsPerChapter} words of actual prose narrative\n- Open with a hook — no throat-clearing\n- End with a reason to turn the page\n- Include sensory details and internal tension\n- Write the COMPLETE chapter as actual prose, not a summary\n- Do NOT write fewer than ${wordsPerChapter} words. If running short, add more scenes, dialogue, internal monologue, sensory detail.`,
+        `Write Chapter ${ch} of "${title}".
+
+Instructions:
+- Follow the outline beats and scene breakdowns for this chapter
+- Check the Book Bible for character consistency
+- You MUST write at least ${wordsPerChapter} words of actual prose narrative
+- Open with a hook — no throat-clearing
+- End with a reason to turn the page
+- Include sensory details and internal tension
+- Write the COMPLETE chapter as actual prose, not a summary
+- Do NOT write fewer than ${wordsPerChapter} words. If running short, add more scenes, dialogue, internal monologue, sensory detail.`,
         { skill: 'write', wordCountTarget: wordsPerChapter, chapterNumber: ch }
       );
 
-      addStep(`Critique Chapter ${ch}`, 'writing', 'revision',
-        `Critique Chapter ${ch} of "${title}".\n\nReview the most recent draft of this chapter and identify the most important issues to fix before moving on. Focus on:\n- Hook strength and chapter ending momentum\n- Scene structure and pacing\n- Character voice and dialogue authenticity\n- Show vs tell and sensory detail\n- Continuity with the outline and Book Bible\n\nReturn a concise, actionable edit memo with prioritized fixes for THIS chapter only.`,
+      addStep(`Self-review Chapter ${ch}`, 'writing', 'revision',
+        `Review Chapter ${ch} of "${title}" immediately after drafting it.
+
+Check for:
+- Persona voice and prose consistency
+- Scene clarity and pacing
+- Strong opening hook and ending hook
+- Show vs tell balance
+- Dialogue quality
+- Sensory detail and emotional tension
+- Whether the chapter fully hits the planned beats
+
+Provide concrete revision instructions the rewrite pass can apply. Focus on making the chapter stronger, not on broad manuscript-level issues.`,
         { skill: 'revise', chapterNumber: ch }
       );
 
-      addStep(`Rewrite Chapter ${ch}`, 'writing', 'creative_writing',
-        `Rewrite Chapter ${ch} of "${title}" using the latest critique for this chapter.\n\nRules:\n- Produce the FULL revised chapter as polished prose\n- Implement the critique items instead of merely discussing them\n- Preserve story continuity with previous chapters and the outline\n- Keep or exceed the target length of ${wordsPerChapter} words unless a shorter chapter is clearly stronger\n- Do not output notes or commentary, only the revised chapter prose.`,
-        { skill: 'write', wordCountTarget: wordsPerChapter, chapterNumber: ch }
+      addStep(`Rewrite Chapter ${ch}`, 'writing', 'revision',
+        `Rewrite Chapter ${ch} of "${title}" using the immediately previous self-review notes.
+
+Requirements:
+- Preserve the chapter's core plot beats and continuity
+- Apply the self-review feedback directly in the prose
+- Keep the chapter in the assigned persona voice
+- Maintain or exceed the target length of ${wordsPerChapter} words
+- Output the FULL revised chapter as polished prose, not notes or a summary`,
+        { skill: 'revise', wordCountTarget: wordsPerChapter, chapterNumber: ch }
       );
     }
 
-    // ── Phase: Revision (analysis phase → chapter rewrite loop) ──
-    addStep('Structural revision pass', 'revision', 'revision',
-      `Perform a structural/developmental revision pass across all ${chapters} chapters of "${title}".\n\nAnalyze:\n- Plot structure and pacing across the full arc\n- Character arc completion\n- Tension and stakes escalation\n- Thematic coherence\n- Narrative drive and hooks between chapters\n\nProvide chapter-by-chapter revision instructions prioritized by impact.`,
+    // ── Phase: Revision (3 steps) ──
+    addStep('Developmental edit', 'revision', 'revision',
+      `Perform a developmental edit across all ${chapters} chapters of "${title}".\n\nAnalyze:\n- Plot structure and pacing across the full arc\n- Character arc completion (do characters grow/change as planned?)\n- Tension and stakes escalation\n- Thematic coherence\n- Narrative drive and hooks between chapters\n\nProvide specific, chapter-by-chapter feedback with actionable suggestions.`,
       { skill: 'revise' }
     );
 
-    for (let ch = 1; ch <= chapters; ch++) {
-      addStep(`Rewrite Chapter ${ch} — Structural pass`, 'revision', 'creative_writing',
-        `Rewrite Chapter ${ch} of "${title}" to implement the structural/developmental revision guidance.\n\nUse the latest version of the chapter as the source text. Improve pacing, conflict, stakes, and character arc execution while preserving continuity. Output ONLY the fully revised chapter prose.`,
-        { skill: 'write', wordCountTarget: wordsPerChapter, chapterNumber: ch }
-      );
-    }
-
-    addStep('Line revision pass', 'revision', 'final_edit',
-      `Perform a line-level revision pass of "${title}".\n\nFocus on:\n- Sentence rhythm and variety\n- Word choice and verb strength\n- Show vs tell instances\n- Dialogue quality and tag usage\n- Prose clarity and flow\n- Filler words to cut\n\nProvide chapter-by-chapter line edit guidance with concrete rewrite priorities.`,
+    addStep('Line edit notes', 'revision', 'revision',
+      `Perform a line edit review of "${title}".\n\nFocus on:\n- Sentence rhythm and variety\n- Word choice and verb strength\n- Show vs tell instances\n- Dialogue quality and tag usage\n- Prose clarity and flow\n- Filler words to cut (suddenly, very, just, basically)\n\nProvide specific examples from the chapters with before/after suggestions.`,
       { skill: 'revise' }
     );
 
-    for (let ch = 1; ch <= chapters; ch++) {
-      addStep(`Rewrite Chapter ${ch} — Line pass`, 'revision', 'creative_writing',
-        `Rewrite Chapter ${ch} of "${title}" to implement the line-level revision guidance.\n\nUse the latest revised version of the chapter as the source text. Improve prose quality without breaking continuity. Output ONLY the full revised chapter prose.`,
-        { skill: 'write', wordCountTarget: wordsPerChapter, chapterNumber: ch }
-      );
-    }
-
-    addStep('Consistency revision pass', 'revision', 'consistency',
-      `Run a consistency revision pass across all ${chapters} chapters of "${title}" against the Book Bible.\n\nCheck for contradictions, timeline errors, location mismatches, world-rule violations, dropped threads, and tone inconsistencies. Provide chapter-by-chapter fixes that can be directly applied in rewrites.`,
-      { skill: 'revise' }
-    );
-
-    for (let ch = 1; ch <= chapters; ch++) {
-      addStep(`Rewrite Chapter ${ch} — Consistency pass`, 'revision', 'creative_writing',
-        `Rewrite Chapter ${ch} of "${title}" to implement the consistency revision guidance.\n\nUse the latest version of the chapter as the source text. Resolve contradictions and preserve voice. Output ONLY the full revised chapter prose.`,
-        { skill: 'write', wordCountTarget: wordsPerChapter, chapterNumber: ch }
-      );
-    }
-
-    addStep('Beta reader panel', 'revision', 'revision',
-      `Act as a panel of beta readers for "${title}" and synthesize feedback across the full manuscript.\n\nProvide:\n- strongest hooks and emotional payoffs\n- where readers may get bored or confused\n- what feels clichéd or underdeveloped\n- chapter-by-chapter fixes worth implementing before export`,
-      { skill: 'beta-reader' }
-    );
-
-    for (let ch = 1; ch <= chapters; ch++) {
-      addStep(`Rewrite Chapter ${ch} — Beta pass`, 'revision', 'creative_writing',
-        `Rewrite Chapter ${ch} of "${title}" to implement the strongest beta-reader feedback while preserving the story's intended tone and continuity. Use the latest version of the chapter as the source text. Output ONLY the full revised chapter prose.`,
-        { skill: 'write', wordCountTarget: wordsPerChapter, chapterNumber: ch }
-      );
-    }
-
-    addStep('Final whole-manuscript verification', 'revision', 'consistency',
-      `Verify the FULL manuscript of "${title}" after all rewrite passes.\n\nCheck that:\n- the structural, line, consistency, and beta-reader critiques were actually implemented\n- chapter-to-chapter continuity still holds\n- character arcs and stakes land cleanly\n- no rewrite introduced new contradictions\n\nReturn a final publish-readiness report with any remaining blocking issues.`,
+    addStep('Consistency check', 'revision', 'consistency',
+      `Run a consistency check across all ${chapters} chapters of "${title}" against the Book Bible.\n\nCheck for:\n- Character description contradictions\n- Timeline inconsistencies\n- Location detail mismatches\n- World rule violations\n- Plot holes or dropped threads\n- Tone/voice inconsistencies\n\nList any issues with specific chapter references.`,
       { skill: 'revise' }
     );
 
     // ── Phase: Assembly (1 step) ──
     addStep('Assemble manuscript & report', 'assembly', 'general',
-      `Generate a completion report for "${title}" using the latest rewritten chapter files.\n\nInclude:\n- Total chapters: ${chapters}\n- Target word count: ~${(chapters * wordsPerChapter).toLocaleString()} words\n- Assessment of the manuscript's strengths\n- Areas for improvement in a future draft\n- 2-3 sentence back cover blurb\n- Recommendations for next steps (beta readers, professional edit, etc.)\n\nThe final manuscript must be assembled from the latest rewrite for each chapter, not the earliest draft.`
+      `Generate a completion report for "${title}".\n\nInclude:\n- Total chapters: ${chapters}\n- Target word count: ~${(chapters * wordsPerChapter).toLocaleString()} words\n- Assessment of the manuscript's strengths\n- Areas for improvement in a future draft\n- 2-3 sentence back cover blurb\n- Recommendations for next steps (beta readers, professional edit, etc.)\n\nAll chapter files have been saved individually. This report summarizes the complete pipeline.`
     );
 
     const project: Project = {
@@ -1304,7 +1318,12 @@ export class ProjectEngine {
       label: t.label,
       description: t.description,
       stepCount: t.type === 'novel-pipeline' ? 30 : t.steps.length,
-      stepCountLabel: t.type === 'novel-pipeline' ? '30+ auto-generated steps' : undefined,
+      stepCountLabel:
+        t.type === 'novel-pipeline'
+          ? 'Auto-generated steps based on chapter target'
+          : t.type === 'book-production'
+            ? '3 steps/chapter + compile'
+            : undefined,
     }));
   }
 
@@ -1468,14 +1487,6 @@ Description: ${description}`;
     description: string,
     context?: Record<string, any>
   ): Project {
-    if (type === 'book-production') {
-      return this.createBookProduction(title, description, context || {});
-    }
-
-    if (type === 'deep-revision') {
-      return this.createDeepRevisionProject(title, description, context || {});
-    }
-
     const id = `project-${this.nextId++}`;
     const now = new Date().toISOString();
 
@@ -1703,6 +1714,10 @@ Description: ${description}`;
     const personaPromptContext = project.context?.personaPromptContext || project.context?.personaContext;
     if (personaPromptContext) {
       context += `## Author Persona Voice\n\n${personaPromptContext}\n\n`;
+      const personaStepDirective = this.buildPersonaStepDirective(project, step);
+      if (personaStepDirective) {
+        context += `## Mandatory Voice Directive For This Step\n\n${personaStepDirective}\n\n`;
+      }
     }
 
     const projectConfigBlock = this.buildProjectConfigBlock(project);
@@ -1915,25 +1930,6 @@ Description: ${description}`;
     return context;
   }
 
-  private isChapterProseStep(step: ProjectStep): boolean {
-    return !!step.result && /^(write|rewrite) chapter\s+\d+/i.test(step.label || '');
-  }
-
-  private getLatestChapterProseSteps(project: Project): ProjectStep[] {
-    const byChapter = new Map<number, ProjectStep>();
-    for (const step of project.steps) {
-      if (step.status !== 'completed' || !this.isChapterProseStep(step)) continue;
-      const chapter = typeof step.chapterNumber === 'number'
-        ? step.chapterNumber
-        : Number((step.label.match(/chapter\s+(\d+)/i) || [])[1]);
-      if (!Number.isFinite(chapter) || chapter <= 0) continue;
-      byChapter.set(chapter, step);
-    }
-    return Array.from(byChapter.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([, step]) => step);
-  }
-
   async buildProjectMessages(
     project: Project,
     step: ProjectStep,
@@ -1981,7 +1977,12 @@ ${resultText}`,
       });
     }
 
-    messages.push({ role: 'user', content: currentUserMessage });
+    const personaStepDirective = this.buildPersonaStepDirective(project, step);
+    const finalUserMessage = personaStepDirective
+      ? `${personaStepDirective}\n\nCurrent step request:\n${currentUserMessage}`
+      : currentUserMessage;
+
+    messages.push({ role: 'user', content: finalUserMessage });
     return messages;
   }
 
@@ -2080,125 +2081,6 @@ ${resultText}`,
 
   private singleLine(text: string): string {
     return text.replace(/\s+/g, ' ').trim();
-  }
-
-  private detectChapterCount(context?: Record<string, any>, description = ''): number {
-    const explicit = Number(context?.targetChapters || context?.chapterCount || context?.chapters);
-    if (Number.isFinite(explicit) && explicit > 0) return Math.min(Math.max(Math.floor(explicit), 1), 200);
-
-    const sources = [String(context?.uploadedContent || ''), String(description || '')].filter(Boolean);
-    for (const source of sources) {
-      const matches = [...source.matchAll(/(?:^|\n)\s{0,3}(?:#+\s*)?(?:chapter|ch\.?)[\s:_-]*(\d{1,3})\b/ig)]
-        .map(m => Number(m[1]))
-        .filter(n => Number.isFinite(n) && n > 0);
-      if (matches.length > 0) {
-        return Math.min(Math.max(Math.max(...matches), matches.length), 200);
-      }
-    }
-
-    return 12;
-  }
-
-  private createDeepRevisionProject(title: string, description: string, context: Record<string, any> = {}): Project {
-    const id = `project-${this.nextId++}`;
-    const now = new Date().toISOString();
-    const chapters = this.detectChapterCount(context, description);
-    const steps: ProjectStep[] = [];
-    let stepNum = 1;
-
-    const add = (label: string, taskType: string, prompt: string, opts: { skill?: string; phase?: string; chapterNumber?: number } = {}) => {
-      steps.push({
-        id: `${id}-step-${stepNum++}`,
-        label,
-        skill: opts.skill,
-        taskType,
-        prompt,
-        phase: opts.phase || 'revision',
-        status: 'pending',
-        chapterNumber: opts.chapterNumber,
-      });
-    };
-
-    const addChapterRewriteLoop = (passLabel: string, instructions: string) => {
-      for (let ch = 1; ch <= chapters; ch++) {
-        add(`Rewrite Chapter ${ch} — ${passLabel}`, 'creative_writing',
-          `Rewrite Chapter ${ch} of "${title}" after the ${passLabel} critique.
-
-Use the latest version of this chapter as the source text. ${instructions}
-
-Output ONLY the full revised chapter prose.`,
-          { skill: 'write', phase: 'revision', chapterNumber: ch }
-        );
-      }
-    };
-
-    const analyses = [
-      ['Plot structure analysis', 'revision'],
-      ['Pacing audit', 'revision'],
-      ['Character arc consistency', 'revision'],
-      ['Theme coherence review', 'revision'],
-      ['World-building continuity scan', 'consistency'],
-      ['Stakes escalation verification', 'revision'],
-      ['Subplot tracking & resolution', 'revision'],
-      ['Dialogue authenticity pass', 'revision'],
-      ["Show-don't-tell audit", 'revision'],
-      ['Scene tension & conflict check', 'revision'],
-      ['Transition smoothness review', 'revision'],
-      ['Emotional beat mapping', 'revision'],
-      ['Sensory detail enhancement', 'revision'],
-      ['Info-dump & exposition detection', 'revision'],
-      ['Copy edit pass', 'final_edit'],
-      ['Line edit pass', 'final_edit'],
-      ['Repetition finder', 'revision'],
-      ['Crutch word elimination', 'final_edit'],
-      ['Sensitivity read', 'revision'],
-    ];
-
-    const template = PROJECT_TEMPLATES.find(t => t.type === 'deep-revision');
-    const promptByLabel = new Map((template?.steps || []).map(s => [s.label, this.expandTemplate(s.promptTemplate, { title, description, ...context })]));
-
-    // Phase 1
-    for (const [label, taskType] of analyses.slice(0, 7)) add(String(label), String(taskType), promptByLabel.get(String(label)) || description, { skill: 'revise', phase: 'revision' });
-    add('Phase 1 synthesis', 'revision', `Synthesize the macro/structural critique for "${title}" into a chapter-by-chapter rewrite plan. Identify the specific fixes each chapter needs before the next pass.`, { skill: 'revise', phase: 'revision' });
-    addChapterRewriteLoop('Structural pass', 'Implement the structural, pacing, stakes, subplot, and character-arc fixes that apply to this chapter while preserving continuity.');
-
-    // Phase 2
-    for (const [label, taskType] of analyses.slice(7, 14)) add(String(label), String(taskType), promptByLabel.get(String(label)) || description, { skill: 'revise', phase: 'revision' });
-    add('Phase 2 synthesis', 'revision', `Synthesize the scene-level critique for "${title}" into a chapter-by-chapter rewrite plan focused on dialogue, scene conflict, transitions, emotional beats, sensory detail, and exposition.`, { skill: 'revise', phase: 'revision' });
-    addChapterRewriteLoop('Scene pass', 'Implement the scene-level fixes that apply to this chapter, especially dialogue, tension, transitions, emotional beats, and sensory grounding.');
-
-    // Phase 3
-    for (const [label, taskType] of analyses.slice(14, 19)) add(String(label), String(taskType), promptByLabel.get(String(label)) || description, { skill: 'revise', phase: 'revision' });
-    add('Phase 3 synthesis', 'revision', `Synthesize the line-level critique for "${title}" into a chapter-by-chapter rewrite plan focused on line quality, copy edits, repetition, and crutch words.`, { skill: 'revise', phase: 'revision' });
-    addChapterRewriteLoop('Line pass', 'Implement the line-level fixes that apply to this chapter. Improve clarity, rhythm, diction, and polish without changing story continuity.');
-
-    // Phase 4
-    const betaPrompt = promptByLabel.get('Beta reader panel') || `Act as a beta reader panel for "${title}" and provide chapter-by-chapter feedback.`;
-    add('Beta reader panel', 'revision', betaPrompt, { skill: 'beta-reader', phase: 'revision' });
-    add('Phase 4 synthesis', 'revision', `Synthesize the beta-reader feedback for "${title}" into a final chapter-by-chapter rewrite plan. Focus only on the feedback most worth implementing before export.`, { skill: 'revise', phase: 'revision' });
-    addChapterRewriteLoop('Beta pass', 'Implement the strongest beta-reader feedback that genuinely improves this chapter while preserving voice and continuity.');
-
-    add('Final whole-manuscript verification', 'consistency',
-      `Verify the FULL manuscript of "${title}" after all deep-revision rewrite passes. Confirm that the critiques were actually implemented, chapter continuity still holds, and no new contradictions were introduced. Return a final publish-readiness report with any remaining blockers.`,
-      { skill: 'revise', phase: 'revision' }
-    );
-
-    const project: Project = {
-      id,
-      type: 'deep-revision',
-      title,
-      description,
-      status: 'pending',
-      progress: 0,
-      steps,
-      createdAt: now,
-      updatedAt: now,
-      context: { ...context, revisionChapters: chapters, revisionMode: 'analysis-plus-rewrite' },
-    };
-
-    this.projects.set(id, project);
-    this.persistState();
-    return project;
   }
 
   // ── Smart Project from Natural Language ──
@@ -2302,39 +2184,47 @@ Output ONLY the full revised chapter prose.`,
     const id = `project-${this.nextId++}`;
     const now = new Date().toISOString();
     const chapters = Math.min(Math.max(config.targetChapters || 25, 1), 200);
-    const wordsPerChapter = Math.max(config.targetWordsPerChapter || 3000, 100);
-
-    const steps: ProjectStep[] = [];
+    const wordsPerChapter = Math.max(config.targetWordsPerChapter || 3000, 100);    const steps: ProjectStep[] = [];
     for (let ch = 1; ch <= chapters; ch++) {
-      const base = (ch - 1) * 3;
+      const baseStep = (ch - 1) * 3;
       steps.push({
-        id: `${id}-step-${base + 1}`,
+        id: `${id}-step-${baseStep + 1}`,
         label: `Write Chapter ${ch}`,
         phase: 'writing',
         skill: 'write',
         taskType: 'creative_writing',
-        prompt: `Write Chapter ${ch} of "${title}".\n\nInstructions:\n- Follow the outline beats and book bible for this chapter\n- You MUST write at least ${wordsPerChapter} words of actual prose narrative\n- Open with a hook — no throat-clearing\n- End with a reason to turn the page\n- Include sensory details and internal tension\n- Write the COMPLETE chapter as actual prose, not a summary\n\n${description}`,
+        prompt: `Write Chapter ${ch} of "${title}".
+
+Instructions:
+- Follow the outline beats and book bible for this chapter
+- You MUST write at least ${wordsPerChapter} words of actual prose narrative
+- Open with a hook — no throat-clearing
+- End with a reason to turn the page
+- Include sensory details and internal tension
+- Write the COMPLETE chapter as actual prose, not a summary
+
+${description}`,
         status: 'pending',
         wordCountTarget: wordsPerChapter,
         chapterNumber: ch,
       });
       steps.push({
-        id: `${id}-step-${base + 2}`,
-        label: `Critique Chapter ${ch}`,
+        id: `${id}-step-${baseStep + 2}`,
+        label: `Self-review Chapter ${ch}`,
         phase: 'writing',
         skill: 'revise',
         taskType: 'revision',
-        prompt: `Critique Chapter ${ch} we just wrote. Check for voice consistency, pacing, show vs tell, dialogue quality, sensory details, continuity, and whether the chapter ending creates momentum. Return a short prioritized edit memo for this chapter only.`,
+        prompt: `Review Chapter ${ch} we just wrote. Check for: voice consistency, pacing, show vs tell, dialogue quality, sensory details, continuity with the outline and book bible, and word count target (${wordsPerChapter}+). Provide concrete revision instructions for the rewrite pass.`,
         status: 'pending',
         chapterNumber: ch,
       });
       steps.push({
-        id: `${id}-step-${base + 3}`,
+        id: `${id}-step-${baseStep + 3}`,
         label: `Rewrite Chapter ${ch}`,
         phase: 'writing',
-        skill: 'write',
-        taskType: 'creative_writing',
-        prompt: `Rewrite Chapter ${ch} of "${title}" using the latest critique for this chapter. Output the FULL revised chapter as prose. Implement the critique instead of just discussing it.`,
+        skill: 'revise',
+        taskType: 'revision',
+        prompt: `Rewrite Chapter ${ch} using the self-review feedback we just generated. Keep the same core events, preserve continuity, strengthen prose quality, and output the FULL revised chapter as polished prose at ${wordsPerChapter}+ words.`,
         status: 'pending',
         wordCountTarget: wordsPerChapter,
         chapterNumber: ch,
@@ -2347,7 +2237,7 @@ Output ONLY the full revised chapter prose.`,
       label: 'Compile manuscript',
       phase: 'assembly',
       taskType: 'general',
-      prompt: `Generate a completion report for "${title}". Total chapters: ${chapters}. Target: ~${(chapters * wordsPerChapter).toLocaleString()} words. Assess strengths, areas for improvement, and next steps. Assemble from the latest rewritten chapter files.`,
+      prompt: `Generate a completion report for "${title}". Total chapters: ${chapters}. Target: ~${(chapters * wordsPerChapter).toLocaleString()} words. Assess strengths, areas for improvement, and next steps.`,
       status: 'pending',
     });
 

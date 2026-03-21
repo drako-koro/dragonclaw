@@ -265,6 +265,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
       'anthropic_api_key': 'anthropic_api_key.txt',
       'openai_api_key': 'openai_api_key.txt',
       'telegram_bot_token': 'telegram_bot_token.txt',
+      'discord_bot_token': 'discord_bot_token.txt',
     };
 
     const loaded: string[] = [];
@@ -355,6 +356,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
       'ai.ollama.models.planning', 'ai.ollama.models.drafting', 'ai.ollama.models.critique', 'ai.ollama.models.rewrite', 'ai.ollama.models.final',
       'ai.ollama.thinking.planning', 'ai.ollama.thinking.drafting', 'ai.ollama.thinking.critique', 'ai.ollama.thinking.rewrite', 'ai.ollama.thinking.final',
       'bridges.telegram.enabled', 'bridges.telegram.pairingEnabled',
+      'bridges.discord.enabled', 'bridges.discord.guildId', 'bridges.discord.registerSlashCommands', 'bridges.discord.pairingEnabled',
     ];
     if (!safePaths.includes(path)) {
       return res.status(403).json({ error: 'Config path not allowed' });
@@ -396,8 +398,12 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
     res.json({ success: true, users });
   });
 
-  app.post('/api/telegram/connect', async (_req: Request, res: Response) => {
+  app.post('/api/telegram/connect', async (req: Request, res: Response) => {
     try {
+      const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+      const userId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';
+      if (token) await services.vault.set('telegram_bot_token', token);
+      if (userId) await services.config.setAndPersist('bridges.telegram.allowedUsers', [userId]);
       const result = await gateway.connectTelegram?.();
       if (result?.error) {
         return res.status(400).json({ error: result.error });
@@ -430,6 +436,95 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
       }
     } catch (error) {
       res.status(500).json({ error: 'Failed to test token: ' + String(error) });
+    }
+  });
+
+
+  // ═══════════════════════════════════════════════════════════
+  // Discord Bridge Management (dashboard integration)
+  // ═══════════════════════════════════════════════════════════
+
+  app.get('/api/discord/status', async (_req: Request, res: Response) => {
+    const enabled = services.config.get('bridges.discord.enabled', false);
+    const hasToken = (await services.vault.list()).includes('discord_bot_token');
+    const allowedUsers: string[] = services.config.get('bridges.discord.allowedUsers', []);
+    const allowedChannels: string[] = services.config.get('bridges.discord.allowedChannels', []);
+    const connected = gateway.isDiscordConnected?.() || false;
+
+    res.json({
+      enabled,
+      hasToken,
+      connected,
+      allowedUsers,
+      allowedChannels,
+      guildId: services.config.get('bridges.discord.guildId', ''),
+      registerSlashCommands: services.config.get('bridges.discord.registerSlashCommands', true),
+      pairingEnabled: services.config.get('bridges.discord.pairingEnabled', true),
+    });
+  });
+
+  app.post('/api/discord/users', async (req: Request, res: Response) => {
+    const users = Array.isArray(req.body?.users) ? req.body.users : [];
+    const valid = users.every((u: any) => typeof u === 'string' && /^\\d+$/.test(u));
+    if (!valid) return res.status(400).json({ error: 'Each user ID must be a numeric string' });
+    await services.config.setAndPersist('bridges.discord.allowedUsers', users);
+    gateway.updateDiscordUsers?.(users);
+    res.json({ success: true, users });
+  });
+
+  app.post('/api/discord/channels', async (req: Request, res: Response) => {
+    const channels = Array.isArray(req.body?.channels) ? req.body.channels : [];
+    const valid = channels.every((c: any) => typeof c === 'string' && /^\d+$/.test(c));
+    if (!valid) return res.status(400).json({ error: 'Each channel ID must be a numeric string' });
+    await services.config.setAndPersist('bridges.discord.allowedChannels', channels);
+    gateway.updateDiscordChannels?.(channels);
+    res.json({ success: true, channels });
+  });
+
+  app.post('/api/discord/connect', async (req: Request, res: Response) => {
+    try {
+      const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+      const guildId = typeof req.body?.guildId === 'string' ? req.body.guildId.trim() : '';
+      const users = Array.isArray(req.body?.users) ? req.body.users.filter((u: any) => typeof u === 'string' && /^\d+$/.test(u)) : undefined;
+      const channels = Array.isArray(req.body?.channels) ? req.body.channels.filter((c: any) => typeof c === 'string' && /^\d+$/.test(c)) : undefined;
+      const registerSlashCommands = typeof req.body?.registerSlashCommands === 'boolean' ? req.body.registerSlashCommands : undefined;
+
+      if (token) await services.vault.set('discord_bot_token', token);
+      if (guildId) await services.config.setAndPersist('bridges.discord.guildId', guildId);
+      if (users) await services.config.setAndPersist('bridges.discord.allowedUsers', users);
+      if (channels) await services.config.setAndPersist('bridges.discord.allowedChannels', channels);
+      if (typeof registerSlashCommands === 'boolean') await services.config.setAndPersist('bridges.discord.registerSlashCommands', registerSlashCommands);
+
+      const result = await gateway.connectDiscord?.();
+      if (result?.error) return res.status(400).json({ error: result.error });
+      await services.config.setAndPersist('bridges.discord.enabled', true);
+      res.json({ success: true, message: 'Discord bridge connected' });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to connect Discord: ' + String(error) });
+    }
+  });
+
+  app.post('/api/discord/disconnect', async (_req: Request, res: Response) => {
+    gateway.disconnectDiscord?.();
+    await services.config.setAndPersist('bridges.discord.enabled', false);
+    res.json({ success: true, message: 'Discord bridge disconnected' });
+  });
+
+  app.post('/api/discord/test', async (req: Request, res: Response) => {
+    const token = req.body?.token || await services.vault.get('discord_bot_token');
+    if (!token) return res.status(400).json({ error: 'No token provided or stored' });
+    try {
+      const response = await fetch('https://discord.com/api/v10/users/@me', {
+        headers: { Authorization: `Bot ${token}` },
+      });
+      const data = await response.json() as any;
+      if (response.ok && data?.id) {
+        res.json({ success: true, bot: { username: data.username, id: data.id } });
+      } else {
+        res.status(400).json({ error: data?.message || 'Invalid token' });
+      }
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to test Discord token: ' + String(error) });
     }
   });
 

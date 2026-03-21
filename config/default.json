@@ -13,24 +13,7 @@
     "ollama": {
       "enabled": true,
       "endpoint": "http://localhost:11434",
-      "model": "qwen3.5:35b",
-      "defaultModel": "qwen3.5:35b",
-      "models": {
-        "planning": "deepseek-r1:32b",
-        "drafting": "qwen3.5:35b",
-        "critique": "deepseek-r1:32b",
-        "rewrite": "mistral-small3.2:24b",
-        "final": "deepseek-r1:32b"
-      },
-      "thinking": {
-        "planning": true,
-        "drafting": false,
-        "critique": true,
-        "rewrite": false,
-        "final": true
-      },
-      "maxTokens": 4096,
-      "requestTimeoutMs": 600000
+      "model": "llama3.2"
     },
     "gemini": {
       "model": "gemini-2.5-flash"
@@ -39,10 +22,52 @@
       "model": "deepseek-chat"
     },
     "claude": {
-      "model": "claude-sonnet-4-5-20250929"
+      "enabled": false,
+      "baseUrl": "https://api.anthropic.com/v1",
+      "defaultModel": "claude-sonnet-4-6",
+      "models": {
+        "planning": "claude-sonnet-4-6",
+        "drafting": "claude-opus-4-6",
+        "critique": "claude-opus-4-6",
+        "rewrite": "claude-sonnet-4-6",
+        "final": "claude-opus-4-6"
+      },
+      "thinking": {
+        "planning": true,
+        "drafting": false,
+        "critique": true,
+        "rewrite": false,
+        "final": true
+      },
+      "thinkingEffort": {
+        "planning": "medium",
+        "drafting": "medium",
+        "critique": "medium",
+        "rewrite": "medium",
+        "final": "medium"
+      },
+      "thinkingBudgetTokens": {
+        "planning": 2048,
+        "drafting": 2048,
+        "critique": 2048,
+        "rewrite": 2048,
+        "final": 2048
+      },
+      "maxTokens": 4096,
+      "requestTimeoutMs": 600000,
+      "costPer1kInput": 0,
+      "costPer1kOutput": 0
     },
     "openai": {
       "model": "gpt-4o"
+    },
+    "defaultProvider": "ollama",
+    "providers": {
+      "planning": "ollama",
+      "drafting": "ollama",
+      "critique": "ollama",
+      "rewrite": "ollama",
+      "final": "ollama"
     }
   },
   "memory": {
@@ -69,21 +94,12 @@
       "pairingEnabled": true
     },
     "discord": {
-      "enabled": false
-    }
-  },
-  "branding": {
-    "name": "DragonClaw",
-    "tagline": "The Ember-Forged AI Writing Agent",
-    "theme": "ember-forge",
-    "colors": {
-      "background": "#0b0909",
-      "surface": "#171110",
-      "border": "#3b2419",
-      "accent": "#ff6a1a",
-      "accentGlow": "#ff9b45",
-      "text": "#f7e6d6",
-      "muted": "#8c6a58"
+      "enabled": false,
+      "guildId": "",
+      "allowedUsers": [],
+      "allowedChannels": [],
+      "registerSlashCommands": true,
+      "pairingEnabled": true
     }
   }
 }

@@ -27,7 +27,7 @@ export type ActivityType =
   | 'error'
   | 'system';
 
-export type ActivitySource = 'telegram' | 'dashboard' | 'api' | 'internal';
+export type ActivitySource = 'telegram' | 'discord' | 'dashboard' | 'api' | 'internal';
 
 export interface ActivityEntry {
   timestamp: string;
