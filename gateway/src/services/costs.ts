@@ -1,5 +1,5 @@
 /**
- * AuthorClaw Cost Tracker
+ * DragonClaw Cost Tracker
  * Budget monitoring with daily/monthly caps
  */
 

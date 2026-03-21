@@ -184,7 +184,7 @@ class DragonClawGateway {
       const skillsRefPath = join(ROOT_DIR, 'workspace', 'SKILLS.txt');
       const catalog = this.skills.getSkillCatalog();
       const byCategory = this.skills.getSkillsByCategory();
-      let refContent = 'AUTHORCLAW SKILLS REFERENCE\n';
+      let refContent = 'DRAGONCLAW SKILLS REFERENCE\n';
       refContent += `Auto-generated on startup — ${catalog.length} skills loaded\n`;
       refContent += '═'.repeat(60) + '\n\n';
 

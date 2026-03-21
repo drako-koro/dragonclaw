@@ -1,5 +1,5 @@
 /**
- * AuthorClaw Memory Service
+ * DragonClaw Memory Service
  * Book-aware persistent memory with character sheets, plot threads, world building
  */
 

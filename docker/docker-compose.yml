@@ -52,7 +52,7 @@ services:
   #   networks:
   #     - dragonclaw-net
   #   # Pull default model on first run
-  #   # Run: docker exec dragonclaw-ollama ollama pull llama3.2
+  #   # Run: docker exec dragonclaw-ollama ollama pull qwen3.5:9b
 
 networks:
   dragonclaw-net:

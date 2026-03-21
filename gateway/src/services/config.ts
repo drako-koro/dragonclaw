@@ -1,5 +1,5 @@
 /**
- * AuthorClaw Configuration Service
+ * DragonClaw Configuration Service
  */
 
 import { readFile, writeFile } from 'fs/promises';
@@ -31,8 +31,23 @@ export class ConfigService {
     }
 
     // Environment variable overrides
-    if (process.env.AUTHORCLAW_PORT) this.set('server.port', parseInt(process.env.AUTHORCLAW_PORT));
-    if (process.env.AUTHORCLAW_PRESET) this.set('security.permissionPreset', process.env.AUTHORCLAW_PRESET);
+    if (process.env.DRAGONCLAW_PORT) this.set('server.port', parseInt(process.env.DRAGONCLAW_PORT));
+    if (process.env.DRAGONCLAW_PRESET) this.set('security.permissionPreset', process.env.DRAGONCLAW_PRESET);
+
+    // Normalize Ollama model settings so old configs keep working
+    const ollama = this.config.ai?.ollama;
+    if (ollama) {
+      if (!ollama.defaultModel && ollama.model) ollama.defaultModel = ollama.model;
+      if (!ollama.model && ollama.defaultModel) ollama.model = ollama.defaultModel;
+      if (!ollama.models || typeof ollama.models !== 'object') ollama.models = {};
+      if (!ollama.models.planning) ollama.models.planning = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
+      if (!ollama.models.drafting) ollama.models.drafting = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
+      if (!ollama.models.critique) ollama.models.critique = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
+      if (!ollama.models.rewrite) ollama.models.rewrite = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
+      if (!ollama.models.final) ollama.models.final = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
+      if (!ollama.thinking || typeof ollama.thinking !== 'object') ollama.thinking = {};
+    }
+
   }
 
   get(path: string, defaultValue?: any): any {

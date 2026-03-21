@@ -1,5 +1,5 @@
 /**
- * AuthorClaw Soul Service
+ * DragonClaw Soul Service
  * Loads and manages the three-part soul: personality, style guide, voice profile
  */
 
@@ -13,7 +13,7 @@ export class SoulService {
   private personalityOverride = '';
   private styleGuide = '';
   private voiceProfile = '';
-  private name = 'AuthorClaw';
+  private name = 'DragonClaw';
 
   constructor(soulDir: string) {
     this.soulDir = soulDir;
@@ -30,7 +30,7 @@ export class SoulService {
     }
 
     // Load optional personality override (e.g., snarky, formal, etc.)
-    // This file is user-created and NOT shipped with AuthorClaw
+    // This file is user-created and NOT shipped with DragonClaw
     const personalityPath = join(this.soulDir, 'PERSONALITY.md');
     if (existsSync(personalityPath)) {
       this.personalityOverride = await readFile(personalityPath, 'utf-8');
@@ -74,7 +74,7 @@ export class SoulService {
       context += '## Author Voice Profile\n\n' + this.voiceProfile + '\n\n';
     }
 
-    return context || 'You are AuthorClaw, a helpful writing assistant for authors.';
+    return context || 'You are DragonClaw, a helpful writing assistant for authors.';
   }
 
   async updateVoiceProfile(analysis: string): Promise<void> {

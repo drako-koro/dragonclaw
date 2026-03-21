@@ -44,12 +44,12 @@ if command -v ollama &> /dev/null || curl -s http://localhost:11434/api/tags > /
     if curl -s http://localhost:11434/api/tags | grep -q "llama"; then
         echo "    ✓ Models available"
     else
-        echo "    ⚠️  No models found. Run: ollama pull llama3.2"
+        echo "    ⚠️  No models found. Run: ollama pull qwen3.5:9b"
     fi
 else
     echo "  ℹ  Ollama not detected."
     echo "     For FREE local AI, install from https://ollama.ai"
-    echo "     Then run: ollama pull llama3.2"
+    echo "     Then run: ollama pull qwen3.5:9b"
 fi
 
 echo ""

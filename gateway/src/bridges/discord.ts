@@ -1,5 +1,5 @@
 /**
- * AuthorClaw Discord Bridge (Stub)
+ * DragonClaw Discord Bridge (Stub)
  * Discord integration — similar structure to Telegram
  */
 

@@ -1,5 +1,5 @@
 /**
- * AuthorClaw Injection Detector
+ * DragonClaw Injection Detector
  * Detects common prompt injection patterns
  */
 

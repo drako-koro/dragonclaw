@@ -279,7 +279,7 @@ if [ "$OLLAMA_RUNNING" = true ]; then
         echo -e "  ${WHITE}Let's download an AI model. This is a one-time download.${NC}"
         echo ""
         echo -e "  ${BOLD}Choose a model:${NC}"
-        echo -e "    ${WHITE}1)${NC} llama3.2 (2GB)     — Good balance of speed and quality"
+        echo -e "    ${WHITE}1)${NC} qwen3.5:9b (2GB)     — Good balance of speed and quality"
         echo -e "    ${WHITE}2)${NC} mistral (4GB)      — Strong at creative writing"
         echo -e "    ${WHITE}3)${NC} qwen2.5 (4.7GB)    — Good at following instructions"
         echo -e "    ${WHITE}4)${NC} Skip for now"
@@ -288,13 +288,13 @@ if [ "$OLLAMA_RUNNING" = true ]; then
         read -r MODEL_CHOICE
         
         case $MODEL_CHOICE in
-            1) echo "  Downloading llama3.2 (~2GB, may take a few minutes)..."
-               ollama pull llama3.2 && ok "llama3.2 ready" ;;
+            1) echo "  Downloading qwen3.5:9b (~2GB, may take a few minutes)..."
+               ollama pull qwen3.5:9b && ok "qwen3.5:9b ready" ;;
             2) echo "  Downloading mistral (~4GB, may take a few minutes)..."
                ollama pull mistral && ok "mistral ready" ;;
             3) echo "  Downloading qwen2.5 (~4.7GB, may take a few minutes)..."
                ollama pull qwen2.5 && ok "qwen2.5 ready" ;;
-            *) info "Skipping model download. Run 'ollama pull llama3.2' later." ;;
+            *) info "Skipping model download. Run 'ollama pull qwen3.5:9b' later." ;;
         esac
     fi
 fi

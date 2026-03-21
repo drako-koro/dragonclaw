@@ -1,5 +1,5 @@
 /**
- * TTS has been removed from this fork of AuthorClaw.
+ * TTS has been removed from this fork of DragonClaw.
  *
  * This file is only a temporary compatibility stub in case a stale import
  * still references ../services/tts.js during migration.
@@ -36,6 +36,6 @@ export class TTSService {
   static readonly VOICE_PRESETS: Record<string, VoicePreset> = {};
 
   constructor(_workspaceDir: string) {
-    throw new Error('TTS has been removed from this fork of AuthorClaw. Remove any remaining TTS imports and routes.');
+    throw new Error('TTS has been removed from this fork of DragonClaw. Remove any remaining TTS imports and routes.');
   }
 }

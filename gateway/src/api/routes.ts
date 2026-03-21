@@ -1,5 +1,5 @@
 /**
- * AuthorClaw API Routes
+ * DragonClaw API Routes
  * REST API for the dashboard and external integrations
  */
 
@@ -21,7 +21,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
     res.json({
       status: 'ok',
       version: '4.0.0',
-      name: 'AuthorClaw',
+      name: 'DragonClaw',
       brand: 'Writing Secrets',
       uptime: process.uptime(),
       links: {
@@ -92,7 +92,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
     } catch (err: any) {
       const msg = String(err?.message || err);
       if (msg.includes('No AI providers')) {
-        return res.status(503).json({ error: 'No AI providers configured. Configure Ollama in Settings.' });
+        return res.status(503).json({ error: 'No AI providers configured. Add an API key in Settings → API Keys.' });
       }
       return res.status(500).json({ error: 'AI error: ' + msg });
     }
@@ -249,8 +249,8 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
 
     // Check common shared folder locations (VM, Docker, or user-set env var)
     const candidates = [
-      process.env.AUTHORCLAW_KEYS_DIR,
-      '/media/sf_authorclaw-transfer',
+      process.env.DRAGONCLAW_KEYS_DIR,
+      '/media/sf_dragonclaw-transfer',
       '/media/sf_vm-transfer',
       j(baseDir, '..', 'vm-transfer'),
     ].filter(Boolean) as string[];
@@ -265,7 +265,6 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
       'anthropic_api_key': 'anthropic_api_key.txt',
       'openai_api_key': 'openai_api_key.txt',
       'telegram_bot_token': 'telegram_bot_token.txt',
-      'discord_bot_token': 'discord_bot_token.txt',
     };
 
     const loaded: string[] = [];
@@ -350,18 +349,12 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
       'heartbeat.enableReminders', 'heartbeat.quietHoursStart',
       'heartbeat.quietHoursEnd', 'heartbeat.autonomousEnabled',
       'heartbeat.autonomousIntervalMinutes', 'heartbeat.maxAutonomousStepsPerWake',
-      'ai.defaultTemperature', 'ai.defaultProvider',
-      'ai.providers.planning', 'ai.providers.drafting', 'ai.providers.critique', 'ai.providers.rewrite', 'ai.providers.final',
-      'ai.ollama.enabled', 'ai.ollama.endpoint', 'ai.ollama.model',
-      'ai.ollama.defaultModel', 'ai.ollama.maxTokens', 'ai.ollama.requestTimeoutMs',
+      'ai.defaultTemperature',
+      'ai.ollama.enabled', 'ai.ollama.endpoint', 'ai.ollama.model', 'ai.ollama.defaultModel',
+      'ai.ollama.maxTokens', 'ai.ollama.requestTimeoutMs',
       'ai.ollama.models.planning', 'ai.ollama.models.drafting', 'ai.ollama.models.critique', 'ai.ollama.models.rewrite', 'ai.ollama.models.final',
       'ai.ollama.thinking.planning', 'ai.ollama.thinking.drafting', 'ai.ollama.thinking.critique', 'ai.ollama.thinking.rewrite', 'ai.ollama.thinking.final',
-      'ai.claude.enabled', 'ai.claude.baseUrl', 'ai.claude.defaultModel', 'ai.claude.maxTokens', 'ai.claude.requestTimeoutMs',
-      'ai.claude.models.planning', 'ai.claude.models.drafting', 'ai.claude.models.critique', 'ai.claude.models.rewrite', 'ai.claude.models.final',
-      'ai.claude.thinking.planning', 'ai.claude.thinking.drafting', 'ai.claude.thinking.critique', 'ai.claude.thinking.rewrite', 'ai.claude.thinking.final',
-      'ai.claude.thinkingEffort.planning', 'ai.claude.thinkingEffort.drafting', 'ai.claude.thinkingEffort.critique', 'ai.claude.thinkingEffort.rewrite', 'ai.claude.thinkingEffort.final',
-      'bridges.telegram.enabled', 'bridges.telegram.allowedUsers', 'bridges.telegram.pairingEnabled',
-      'bridges.discord.enabled', 'bridges.discord.guildId', 'bridges.discord.allowedUsers', 'bridges.discord.allowedChannels', 'bridges.discord.registerSlashCommands',
+      'bridges.telegram.enabled', 'bridges.telegram.pairingEnabled',
     ];
     if (!safePaths.includes(path)) {
       return res.status(403).json({ error: 'Config path not allowed' });
@@ -369,7 +362,6 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
     services.config.set(path, value);
     res.json({ success: true, path, value });
   });
-
 
   // ═══════════════════════════════════════════════════════════
   // Telegram Bridge Management (dashboard integration)
@@ -391,30 +383,21 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   });
 
   app.post('/api/telegram/users', async (req: Request, res: Response) => {
-    const users = Array.isArray(req.body?.users)
-      ? req.body.users
-      : String(req.body?.users || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+    const { users } = req.body;
+    if (!Array.isArray(users)) {
+      return res.status(400).json({ error: 'users must be an array of user ID strings' });
+    }
     const valid = users.every((u: any) => typeof u === 'string' && /^\d+$/.test(u));
     if (!valid) {
-      return res.status(400).json({ error: 'Each Telegram user ID must be a numeric string' });
+      return res.status(400).json({ error: 'Each user ID must be a numeric string' });
     }
     await services.config.setAndPersist('bridges.telegram.allowedUsers', users);
     gateway.updateTelegramUsers?.(users);
     res.json({ success: true, users });
   });
 
-  app.post('/api/telegram/connect', async (req: Request, res: Response) => {
+  app.post('/api/telegram/connect', async (_req: Request, res: Response) => {
     try {
-      const token = String(req.body?.token || '').trim();
-      const users = Array.isArray(req.body?.users)
-        ? req.body.users
-        : String(req.body?.users || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-      const pairingEnabled = req.body?.pairingEnabled !== false;
-
-      if (token) await services.vault.set('telegram_bot_token', token);
-      if (req.body?.users !== undefined) await services.config.setAndPersist('bridges.telegram.allowedUsers', users);
-      await services.config.setAndPersist('bridges.telegram.pairingEnabled', pairingEnabled);
-
       const result = await gateway.connectTelegram?.();
       if (result?.error) {
         return res.status(400).json({ error: result.error });
@@ -444,106 +427,6 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
         res.json({ success: true, bot: { username: data.result.username, name: data.result.first_name } });
       } else {
         res.status(400).json({ error: data.description || 'Invalid token' });
-      }
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to test token: ' + String(error) });
-    }
-  });
-
-  // ═══════════════════════════════════════════════════════════
-  // Discord Bridge Management (dashboard integration)
-  // ═══════════════════════════════════════════════════════════
-
-  app.get('/api/discord/status', async (_req: Request, res: Response) => {
-    const enabled = services.config.get('bridges.discord.enabled', false);
-    const hasToken = (await services.vault.list()).includes('discord_bot_token');
-    const allowedUsers: string[] = services.config.get('bridges.discord.allowedUsers', []);
-    const allowedChannels: string[] = services.config.get('bridges.discord.allowedChannels', []);
-    const guildId: string = services.config.get('bridges.discord.guildId', '');
-    const connected = gateway.isDiscordConnected?.() || false;
-
-    res.json({
-      enabled,
-      hasToken,
-      connected,
-      allowedUsers,
-      allowedChannels,
-      guildId,
-      registerSlashCommands: services.config.get('bridges.discord.registerSlashCommands', true),
-    });
-  });
-
-  app.post('/api/discord/users', async (req: Request, res: Response) => {
-    const users = Array.isArray(req.body?.users)
-      ? req.body.users
-      : String(req.body?.users || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-    const valid = users.every((u: any) => typeof u === 'string');
-    if (!valid) {
-      return res.status(400).json({ error: 'Each Discord user ID must be a string' });
-    }
-    await services.config.setAndPersist('bridges.discord.allowedUsers', users);
-    gateway.updateDiscordUsers?.(users);
-    res.json({ success: true, users });
-  });
-
-  app.post('/api/discord/channels', async (req: Request, res: Response) => {
-    const channels = Array.isArray(req.body?.channels)
-      ? req.body.channels
-      : String(req.body?.channels || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-    const valid = channels.every((c: any) => typeof c === 'string');
-    if (!valid) {
-      return res.status(400).json({ error: 'Each Discord channel ID must be a string' });
-    }
-    await services.config.setAndPersist('bridges.discord.allowedChannels', channels);
-    gateway.updateDiscordChannels?.(channels);
-    res.json({ success: true, channels });
-  });
-
-  app.post('/api/discord/connect', async (req: Request, res: Response) => {
-    try {
-      const token = String(req.body?.token || '').trim();
-      const guildId = String(req.body?.guildId || '').trim();
-      const users = String(req.body?.users || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-      const channels = String(req.body?.channels || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-      const registerSlashCommands = req.body?.registerSlashCommands !== false;
-
-      if (token) await services.vault.set('discord_bot_token', token);
-      if (guildId || req.body?.guildId === '') await services.config.setAndPersist('bridges.discord.guildId', guildId);
-      if (req.body?.users !== undefined) await services.config.setAndPersist('bridges.discord.allowedUsers', users);
-      if (req.body?.channels !== undefined) await services.config.setAndPersist('bridges.discord.allowedChannels', channels);
-      await services.config.setAndPersist('bridges.discord.registerSlashCommands', registerSlashCommands);
-
-      const result = await gateway.connectDiscord?.();
-      if (result?.error) {
-        return res.status(400).json({ error: result.error });
-      }
-      await services.config.setAndPersist('bridges.discord.enabled', true);
-      res.json({ success: true, message: 'Discord bridge connected' });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to connect Discord: ' + String(error) });
-    }
-  });
-
-  app.post('/api/discord/disconnect', async (_req: Request, res: Response) => {
-    gateway.disconnectDiscord?.();
-    await services.config.setAndPersist('bridges.discord.enabled', false);
-    res.json({ success: true, message: 'Discord bridge disconnected' });
-  });
-
-  app.post('/api/discord/test', async (req: Request, res: Response) => {
-    const token = req.body.token || await services.vault.get('discord_bot_token');
-    if (!token) {
-      return res.status(400).json({ error: 'No token provided or stored' });
-    }
-    try {
-      const response = await fetch('https://discord.com/api/v10/users/@me', {
-        headers: { Authorization: `Bot ${token}` },
-      });
-      const data = await response.json() as any;
-      if (response.ok) {
-        res.json({ success: true, bot: { username: data.username, id: data.id } });
-      } else {
-        res.status(400).json({ error: data.message || 'Invalid token' });
       }
     } catch (error) {
       res.status(500).json({ error: 'Failed to test token: ' + String(error) });
@@ -993,7 +876,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
 
               const docxBuffer = await generateDocxBuffer({
                 title: currentProject.title,
-                author: 'AuthorClaw',
+                author: 'DragonClaw',
                 content: manuscriptMd,
               });
               await writeFile(join(projectDir, 'manuscript.docx'), docxBuffer);
@@ -1750,7 +1633,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
       // Get persona info for metadata
       const personaId = (project as any).personaId;
       const persona = personaId ? services.personas?.get(personaId) : null;
-      const authorName = persona?.penName || 'AuthorClaw';
+      const authorName = persona?.penName || 'DragonClaw';
 
       const exportFiles = [`${outputBaseName}.md`];
 
@@ -2032,7 +1915,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
     // Security: must be within project
     const resolvedBase = r(baseDir);
     if (!resolvedInput.startsWith(resolvedBase)) {
-      return res.status(403).json({ error: 'Input file must be within the AuthorClaw directory' });
+      return res.status(403).json({ error: 'Input file must be within the DragonClaw directory' });
     }
 
     const exportDir = r(workspaceDir, outputDir || 'exports');
@@ -2040,7 +1923,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
 
     const content = await rf(resolvedInput, 'utf-8');
     const docTitle = title || bn(resolvedInput, '.md');
-    const docAuthor = author || 'AuthorClaw';
+    const docAuthor = author || 'DragonClaw';
     const requestedFormats = formats || ['docx'];
     const results: string[] = [];
 
@@ -2119,7 +2002,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
     }
 
     const targetCategory = category || 'author';
-    const ingestPrompt = `You are analyzing source code to create an AuthorClaw SKILL.md file.
+    const ingestPrompt = `You are analyzing source code to create an DragonClaw SKILL.md file.
 
 Tool name hint: ${toolName || '(infer from code)'}
 Target category: ${targetCategory}
@@ -2129,7 +2012,7 @@ Analyze the following source code and generate a complete SKILL.md file with:
 2. Detailed usage instructions
 3. Input/output documentation
 4. Example commands or workflows
-5. How AuthorClaw should invoke or reference the tool
+5. How DragonClaw should invoke or reference the tool
 
 Return ONLY the complete SKILL.md content (starting with ---).
 
@@ -2142,7 +2025,7 @@ ${sourceCode.substring(0, 15000)}
       const provider = services.aiRouter.selectProvider('general');
       const result = await services.aiRouter.complete({
         provider: provider.id,
-        system: 'You are a technical documentation expert. Generate AuthorClaw SKILL.md files from source code analysis.',
+        system: 'You are a technical documentation expert. Generate DragonClaw SKILL.md files from source code analysis.',
         messages: [{ role: 'user', content: ingestPrompt }],
         maxTokens: 4096,
         temperature: 0.3,
@@ -2212,6 +2095,8 @@ ${sourceCode.substring(0, 15000)}
     try {
       const provider = services.aiRouter?.selectProvider('general');
       if (!provider) return res.status(503).json({ error: 'No AI provider available. Configure an API key in Settings first.' });
+      const planningModel = services.config.get('ai.ollama.models.planning') || services.config.get('ai.ollama.defaultModel') || services.config.get('ai.ollama.model') || 'qwen3.5:35b';
+      const planningThink = services.config.get('ai.ollama.thinking.planning', true);
       const result = await services.aiRouter.complete({
         provider: provider.id,
         system: 'You are a publishing industry expert. Return ONLY valid JSON, no markdown.',
@@ -2220,6 +2105,9 @@ ${sourceCode.substring(0, 15000)}
           content: `Create an author persona for someone who writes ${genre}. ${description || ''}\n\nReturn JSON with these fields:\n- penName: a believable pen name for this genre\n- genre: the main genre\n- subGenre: a specific subgenre\n- voiceDescription: 1-2 sentences describing their writing voice/style\n- styleMarkers: array of 3-5 style descriptors (e.g. "witty dialogue", "slow burn")\n- bio: a 2-3 sentence author bio in third person\n\nReturn ONLY the JSON object.`,
         }],
         maxTokens: 500,
+        taskType: 'general',
+        model: provider.id === 'ollama' ? planningModel : undefined,
+        think: provider.id === 'ollama' ? planningThink : undefined,
       });
       if (result.text) {
         const cleaned = result.text.replace(/```json\n?|```\n?/g, '').trim();
@@ -2429,7 +2317,7 @@ ${sourceCode.substring(0, 15000)}
     try {
       const result = await imageGen.generateBookCover({
         title: title || 'Untitled',
-        author: author || 'AuthorClaw',
+        author: author || 'DragonClaw',
         genre: genre || 'fiction',
         description,
         style,
