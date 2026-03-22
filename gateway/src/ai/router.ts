@@ -109,7 +109,7 @@ export class AIRouter {
           tier: 'free',
           available: true,
           endpoint: this.config.ollama?.endpoint || 'http://localhost:11434',
-          maxTokens: 131072,
+          maxTokens: 98304,
           costPer1kInput: 0,
           costPer1kOutput: 0,
         });
@@ -126,7 +126,7 @@ export class AIRouter {
         tier: 'free',
         available: true,
         endpoint: 'https://generativelanguage.googleapis.com/v1beta',
-        maxTokens: 131072,
+        maxTokens: 98304,
         costPer1kInput: 0, // Free tier
         costPer1kOutput: 0,
       });
@@ -142,7 +142,7 @@ export class AIRouter {
         tier: 'cheap',
         available: true,
         endpoint: 'https://api.deepseek.com/v1',
-        maxTokens: 131072,
+        maxTokens: 98304,
         costPer1kInput: 0.00014,
         costPer1kOutput: 0.00028,
       });
@@ -158,7 +158,7 @@ export class AIRouter {
         tier: 'paid',
         available: true,
         endpoint: 'https://api.anthropic.com/v1',
-        maxTokens: 131072,
+        maxTokens: 98304,
         costPer1kInput: 0.003,
         costPer1kOutput: 0.015,
       });
@@ -174,7 +174,7 @@ export class AIRouter {
         tier: 'paid',
         available: true,
         endpoint: 'https://api.openai.com/v1',
-        maxTokens: 131072,
+        maxTokens: 98304,
         costPer1kInput: 0.0025,
         costPer1kOutput: 0.01,
       });
@@ -381,7 +381,10 @@ export class AIRouter {
     return createHash('sha256').update(prompt).digest('hex');
   }
 
-  // ── Ollama (OpenAI-compatible local) ──
+  // ── Ollama (streaming mode) ──
+  // Uses stream:true so Ollama sends HTTP headers immediately, avoiding
+  // Node's default 300s headersTimeout that kills long-running generations.
+  // Chunks are accumulated in memory and returned as a single response.
   private async completeOllama(
     provider: AIProvider,
     request: CompletionRequest
@@ -398,7 +401,7 @@ export class AIRouter {
           { role: 'system', content: request.system },
           ...request.messages,
         ],
-        stream: false,
+        stream: true,
         think,
         options: {
           temperature: request.temperature ?? this.config.defaultTemperature ?? 0.7,
@@ -407,14 +410,72 @@ export class AIRouter {
       }),
     });
 
-    const data = await response.json() as any;
     if (!response.ok) {
-      const errText = data?.error || data?.message?.content || response.statusText || 'Ollama request failed';
+      // Try to read error body
+      let errText = response.statusText || 'Ollama request failed';
+      try {
+        const errData = await response.json() as any;
+        errText = errData?.error || errData?.message?.content || errText;
+      } catch { /* use statusText */ }
       throw new Error(`Ollama error (${model}): ${errText}`);
     }
+
+    if (!response.body) {
+      throw new Error(`Ollama error (${model}): no response body`);
+    }
+
+    // Read the NDJSON stream and accumulate content
+    let content = '';
+    let promptEvalCount = 0;
+    let evalCount = 0;
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete lines (Ollama sends one JSON object per line)
+      let newlineIdx: number;
+      while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, newlineIdx).trim();
+        buffer = buffer.slice(newlineIdx + 1);
+
+        if (!line) continue;
+
+        try {
+          const chunk = JSON.parse(line);
+
+          // Accumulate content tokens
+          if (chunk.message?.content) {
+            content += chunk.message.content;
+          }
+
+          // Final chunk carries token counts and done flag
+          if (chunk.done) {
+            promptEvalCount = chunk.prompt_eval_count || 0;
+            evalCount = chunk.eval_count || 0;
+          }
+
+          // Surface errors mid-stream
+          if (chunk.error) {
+            throw new Error(`Ollama stream error (${model}): ${chunk.error}`);
+          }
+        } catch (parseErr: any) {
+          // Only rethrow if it's our own error, not a JSON parse issue on a partial line
+          if (parseErr.message?.startsWith('Ollama stream error')) throw parseErr;
+          // Otherwise skip malformed lines (shouldn't happen with complete lines)
+        }
+      }
+    }
+
     return {
-      text: String(data.message?.content || '').trim(),
-      tokensUsed: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+      text: content.trim(),
+      tokensUsed: promptEvalCount + evalCount,
       estimatedCost: 0,
       provider: 'ollama',
     };

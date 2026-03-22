@@ -2254,7 +2254,7 @@ ${sourceCode.substring(0, 15000)}
         provider: provider.id,
         system: 'You are a technical documentation expert. Generate DragonClaw SKILL.md files from source code analysis.',
         messages: [{ role: 'user', content: ingestPrompt }],
-        maxTokens: 131072,
+        maxTokens: 98304,
         temperature: 0.3,
       });
 

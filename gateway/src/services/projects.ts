@@ -1397,7 +1397,7 @@ Description: ${description}`;
         provider: provider.id,
         system: plannerPrompt,
         messages: [{ role: 'user', content: `Plan the steps to accomplish: ${description}` }],
-        maxTokens: 131072,
+        maxTokens: 98304,
         temperature: 0.3,
       });
 
@@ -2282,8 +2282,8 @@ ${description}`,
    */
   private async getCoreLessons(): Promise<string | null> {
     const now = Date.now();
-    // Return cached version if less than 5 minutes old
-    if (this.coreLessonsCache !== null && (now - this.coreLessonsCacheTime) < 300000) {
+    // Return cached version if less than 60 minutes old
+    if (this.coreLessonsCache !== null && (now - this.coreLessonsCacheTime) < 3600000) {
       return this.coreLessonsCache;
     }
 

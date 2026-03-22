@@ -626,7 +626,7 @@ export class TelegramBridge {
         telegramPrompt,
         `telegram:${chatId}`,
         async (response) => {
-          // sendMessage auto-splits at 131072 chars (Telegram's real limit)
+          // sendMessage auto-splits at 98304 chars (Telegram's real limit)
           await this.sendMessage(chatId, response);
 
           // Store last response for "read that back" requests
@@ -642,8 +642,8 @@ export class TelegramBridge {
   }
 
   private async sendMessage(chatId: number, text: string): Promise<void> {
-    // Split long messages (Telegram limit: 131072 chars)
-    const chunks = this.splitMessage(text, 131072);
+    // Split long messages (Telegram limit: 98304 chars)
+    const chunks = this.splitMessage(text, 98304);
     for (const chunk of chunks) {
       const response = await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
         method: 'POST',

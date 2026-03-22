@@ -85,7 +85,7 @@ export class ConfigService {
     const defaultModel = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
     ollama.defaultModel = defaultModel;
     ollama.model = defaultModel;
-    ollama.maxTokens = ollama.maxTokens || 131072;
+    ollama.maxTokens = ollama.maxTokens || 98304;
     ollama.requestTimeoutMs = ollama.requestTimeoutMs || 3600000;
     ollama.models = {
       planning: ollama.models?.planning || 'deepseek-r1:32b',
@@ -107,7 +107,7 @@ export class ConfigService {
     const claudeDefault = claude.defaultModel || 'claude-sonnet-4-6';
     claude.defaultModel = claudeDefault;
     claude.baseUrl = claude.baseUrl || 'https://api.anthropic.com/v1';
-    claude.maxTokens = claude.maxTokens || 131072;
+    claude.maxTokens = claude.maxTokens || 98304;
     claude.requestTimeoutMs = claude.requestTimeoutMs || 3600000;
     claude.models = {
       planning: claude.models?.planning || claudeDefault,

@@ -29,7 +29,7 @@
         "rewrite": false,
         "final": true
       },
-      "maxTokens": 131072,
+      "maxTokens": 98304,
       "requestTimeoutMs": 3600000
     },
     "gemini": {
@@ -64,13 +64,13 @@
         "final": "medium"
       },
       "thinkingBudgetTokens": {
-        "planning": 65536,
-        "drafting": 65536,
-        "critique": 65536,
-        "rewrite": 65536,
-        "final": 65536
+        "planning": 98304,
+        "drafting": 98304,
+        "critique": 98304,
+        "rewrite": 98304,
+        "final": 98304
       },
-      "maxTokens": 131072,
+      "maxTokens": 98304,
       "requestTimeoutMs": 3600000,
       "costPer1kInput": 0,
       "costPer1kOutput": 0
