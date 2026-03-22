@@ -409,11 +409,12 @@ export class AIRouter {
     });
 
     const url = new URL(`${provider.endpoint}/api/chat`);
+    console.log(`  [ollama] Sending POST to ${url.hostname}:${url.port}${url.pathname} (model: ${model}, think: ${think})`);
 
     return new Promise<CompletionResponse>((resolve, reject) => {
       const req = http.request(
         {
-          hostname: url.hostname,
+          hostname: url.hostname === 'localhost' ? '127.0.0.1' : url.hostname,
           port: url.port || 11434,
           path: url.pathname,
           method: 'POST',
