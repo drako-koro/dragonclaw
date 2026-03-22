@@ -164,6 +164,29 @@ class DragonClawGateway {
       console.log(`  ✓ AI: ${p.name} (${p.model}) — ${tier}`);
     }
 
+    // ── Ollama Hardware Optimization Check (macOS Apple Silicon) ──
+    if (process.platform === 'darwin' && providers.some(p => p.id === 'ollama')) {
+      const tips: string[] = [];
+      if (!process.env.OLLAMA_KEEP_ALIVE) {
+        tips.push('OLLAMA_KEEP_ALIVE=-1 (keep model in memory, skip reload delays)');
+      }
+      if (!process.env.OLLAMA_FLASH_ATTENTION) {
+        tips.push('OLLAMA_FLASH_ATTENTION=1 (faster attention on Apple Silicon)');
+      }
+      if (!process.env.OLLAMA_KV_CACHE_TYPE) {
+        tips.push('OLLAMA_KV_CACHE_TYPE=q8_0 (reduce KV cache memory usage)');
+      }
+      if (tips.length > 0) {
+        console.log(`  💡 Ollama performance tip: set these via launchctl for best results on Apple Silicon:`);
+        for (const tip of tips) {
+          console.log(`     launchctl setenv ${tip.split(' (')[0]}`);
+        }
+        console.log(`     Then restart the Ollama app.`);
+      } else {
+        console.log(`  ✓ Ollama: Apple Silicon optimizations detected`);
+      }
+    }
+
     // ── Phase 5: Research Gate ──
     this.research = new ResearchGate(
       join(ROOT_DIR, 'config', 'research-allowlist.json'),

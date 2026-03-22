@@ -970,13 +970,13 @@ textarea { resize: vertical; min-height: 60px; }
           </div>
           <div class="form-group">
             <label>Default Fallback Model</label>
-            <input type="text" id="ollamaDefaultModel" placeholder="qwen3.5:35b">
+            <input type="text" id="ollamaDefaultModel" placeholder="qwen3.5:27b">
           </div>
         </div>
         <div class="form-group-inline">
           <div class="form-group">
             <label>Planning Model</label>
-            <input type="text" id="ollamaPlanningModel" placeholder="deepseek-r1:32b">
+            <input type="text" id="ollamaPlanningModel" placeholder="qwen3.5:27b">
           </div>
           <div class="form-group">
             <label>Planning Thinking</label>
@@ -986,7 +986,7 @@ textarea { resize: vertical; min-height: 60px; }
         <div class="form-group-inline">
           <div class="form-group">
             <label>Drafting Model</label>
-            <input type="text" id="ollamaDraftingModel" placeholder="qwen3.5:35b">
+            <input type="text" id="ollamaDraftingModel" placeholder="qwen3.5:27b">
           </div>
           <div class="form-group">
             <label>Drafting Thinking</label>
@@ -996,7 +996,7 @@ textarea { resize: vertical; min-height: 60px; }
         <div class="form-group-inline">
           <div class="form-group">
             <label>Critique Model</label>
-            <input type="text" id="ollamaCritiqueModel" placeholder="deepseek-r1:32b">
+            <input type="text" id="ollamaCritiqueModel" placeholder="qwen3.5:27b">
           </div>
           <div class="form-group">
             <label>Critique Thinking</label>
@@ -1006,7 +1006,7 @@ textarea { resize: vertical; min-height: 60px; }
         <div class="form-group-inline">
           <div class="form-group">
             <label>Rewrite Model</label>
-            <input type="text" id="ollamaRewriteModel" placeholder="mistral-small3.2:24b">
+            <input type="text" id="ollamaRewriteModel" placeholder="qwen3.5:27b">
           </div>
           <div class="form-group">
             <label>Rewrite Thinking</label>
@@ -1016,7 +1016,7 @@ textarea { resize: vertical; min-height: 60px; }
         <div class="form-group-inline">
           <div class="form-group">
             <label>Final Check Model</label>
-            <input type="text" id="ollamaFinalModel" placeholder="deepseek-r1:32b">
+            <input type="text" id="ollamaFinalModel" placeholder="qwen3.5:27b">
           </div>
           <div class="form-group">
             <label>Final Thinking</label>
@@ -2668,13 +2668,13 @@ document.getElementById('btnSaveClaudeSettings').addEventListener('click', funct
 // ── Ollama Settings ──
 var DEFAULT_OLLAMA_SETTINGS = {
   endpoint: 'http://localhost:11434',
-  defaultModel: 'qwen3.5:35b',
+  defaultModel: 'qwen3.5:27b',
   models: {
-    planning: 'deepseek-r1:32b',
-    drafting: 'qwen3.5:35b',
-    critique: 'deepseek-r1:32b',
-    rewrite: 'mistral-small3.2:24b',
-    final: 'deepseek-r1:32b'
+    planning: 'qwen3.5:27b',
+    drafting: 'qwen3.5:27b',
+    critique: 'qwen3.5:27b',
+    rewrite: 'qwen3.5:27b',
+    final: 'qwen3.5:27b'
   },
   thinking: {
     planning: true,

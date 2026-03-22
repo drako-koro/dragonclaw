@@ -82,17 +82,17 @@ export class ConfigService {
 
     // ── Ollama defaults ──
     const ollama = ai.ollama || (ai.ollama = {});
-    const defaultModel = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
+    const defaultModel = ollama.defaultModel || ollama.model || 'qwen3.5:27b';
     ollama.defaultModel = defaultModel;
     ollama.model = defaultModel;
     ollama.maxTokens = ollama.maxTokens || 98304;
     ollama.requestTimeoutMs = ollama.requestTimeoutMs || 3600000;
     ollama.models = {
-      planning: ollama.models?.planning || 'deepseek-r1:32b',
-      drafting: ollama.models?.drafting || 'qwen3.5:35b',
-      critique: ollama.models?.critique || 'deepseek-r1:32b',
-      rewrite: ollama.models?.rewrite || 'mistral-small3.2:24b',
-      final: ollama.models?.final || 'deepseek-r1:32b',
+      planning: ollama.models?.planning || defaultModel,
+      drafting: ollama.models?.drafting || defaultModel,
+      critique: ollama.models?.critique || defaultModel,
+      rewrite: ollama.models?.rewrite || defaultModel,
+      final: ollama.models?.final || defaultModel,
     };
     ollama.thinking = {
       planning: typeof ollama.thinking?.planning === 'boolean' ? ollama.thinking.planning : true,

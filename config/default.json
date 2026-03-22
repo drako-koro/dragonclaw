@@ -13,14 +13,14 @@
     "ollama": {
       "enabled": true,
       "endpoint": "http://localhost:11434",
-      "model": "qwen3.5:35b",
-      "defaultModel": "qwen3.5:35b",
+      "model": "qwen3.5:27b",
+      "defaultModel": "qwen3.5:27b",
       "models": {
-        "planning": "deepseek-r1:32b",
-        "drafting": "qwen3.5:35b",
-        "critique": "deepseek-r1:32b",
-        "rewrite": "mistral-small3.2:24b",
-        "final": "deepseek-r1:32b"
+        "planning": "qwen3.5:27b",
+        "drafting": "qwen3.5:27b",
+        "critique": "qwen3.5:27b",
+        "rewrite": "qwen3.5:27b",
+        "final": "qwen3.5:27b"
       },
       "thinking": {
         "planning": true,

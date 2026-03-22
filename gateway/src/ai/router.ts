@@ -106,7 +106,7 @@ export class AIRouter {
         this.providers.set('ollama', {
           id: 'ollama',
           name: 'Ollama',
-          model: this.config.ollama?.defaultModel || this.config.ollama?.model || this.config.ollama?.models?.planning || 'qwen3.5:35b',
+          model: this.config.ollama?.defaultModel || this.config.ollama?.model || this.config.ollama?.models?.planning || 'qwen3.5:27b',
           tier: 'free',
           available: true,
           endpoint: this.config.ollama?.endpoint || 'http://localhost:11434',
@@ -353,7 +353,7 @@ export class AIRouter {
     if (provider.id === 'claude') {
       return this.config.claude?.models?.[lane] || this.config.claude?.defaultModel || provider.model;
     }
-    return this.config.ollama?.models?.[lane] || this.config.ollama?.defaultModel || this.config.ollama?.model || provider.model || 'qwen3.5:35b';
+    return this.config.ollama?.models?.[lane] || this.config.ollama?.defaultModel || this.config.ollama?.model || provider.model || 'qwen3.5:27b';
   }
 
   private getThinkingForRequest(request: CompletionRequest, providerId?: string): boolean | 'low' | 'medium' | 'high' | undefined {

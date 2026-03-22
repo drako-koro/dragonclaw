@@ -137,6 +137,57 @@ Task routing is automatic — planning and research use free models, creative wr
 
 ---
 
+## Apple Silicon Optimization (macOS)
+
+If you're running Ollama on a Mac with Apple Silicon (M1, M2, M3, M4), these one-time settings will significantly improve performance. DragonClaw's pipeline steps can involve long thinking phases where the AI reasons internally before generating output. Without these settings, macOS may unload the model between steps or miss out on hardware acceleration.
+
+### Step 1: Set environment variables
+
+Open **Terminal** and run these three commands (copy and paste each line one at a time):
+
+```bash
+launchctl setenv OLLAMA_KEEP_ALIVE "-1"
+launchctl setenv OLLAMA_FLASH_ATTENTION "1"
+launchctl setenv OLLAMA_KV_CACHE_TYPE "q8_0"
+```
+
+What these do:
+
+- **`OLLAMA_KEEP_ALIVE=-1`** keeps your model loaded in memory permanently. Without this, Ollama unloads the model after 5 minutes of inactivity, causing a 5-10 second reload delay every time a new pipeline step starts.
+- **`OLLAMA_FLASH_ATTENTION=1`** enables Flash Attention, which speeds up how the model processes long prompts. DragonClaw sends large system prompts with project context, skills, and persona data, so this makes a real difference.
+- **`OLLAMA_KV_CACHE_TYPE=q8_0`** reduces the memory used by the model's internal cache, letting you run larger models or longer context windows within your available RAM.
+
+### Step 2: Restart Ollama
+
+These settings only take effect after restarting the Ollama app:
+
+1. Click the **Ollama icon** in your Mac menu bar (top-right of screen)
+2. Click **Quit Ollama**
+3. Reopen Ollama from your Applications folder (or Spotlight: press `Cmd+Space`, type `Ollama`, press Enter)
+
+### Step 3: Verify
+
+DragonClaw checks for these settings on startup. If they're configured correctly, you'll see:
+
+```
+✓ Ollama: Apple Silicon optimizations detected
+```
+
+If any are missing, DragonClaw will print the specific `launchctl setenv` commands you still need to run.
+
+### RAM Guidelines for Apple Silicon
+
+| Your RAM | What You Can Run | Notes |
+|----------|-----------------|-------|
+| 16GB | 7-8B models | Tight. Close browsers before running |
+| 24-32GB | 14-27B models | Good for most writing tasks |
+| 48GB | 27-32B models comfortably | Sweet spot for quality + speed |
+| 64GB | 32-35B models with room to spare | Excellent for long pipelines |
+
+> **Important:** On macOS, `launchctl setenv` is the correct way to set Ollama environment variables because the Ollama app runs from the menu bar, not from your terminal. Setting variables in `.zshrc` or `.bash_profile` will **not** work because the Ollama app doesn't read shell config files. You only need to run these commands once; they persist across reboots.
+
+---
+
 ## Telegram Command Center
 
 Connect a Telegram bot to control DragonClaw from your phone:

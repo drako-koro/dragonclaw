@@ -1071,10 +1071,22 @@ export class ProjectEngine {
         project.context = project.context || {};
         project.context.personaPromptContext = personaPromptContext;
 
-        const voiceMatch = String(personaPromptContext).match(/\*\*Primary Voice Description \(highest priority\):\*\*\s*(.+)/i)
-          || String(personaPromptContext).match(/\*\*Voice Description:\*\*\s*(.+)/i);
+        // Extract individual persona fields for use in step directives
+        const voiceMatch = String(personaPromptContext).match(/\*\*Voice Description:\*\*\s*(.+)/i);
         if (voiceMatch?.[1]) {
           project.context.personaVoiceDescription = voiceMatch[1].trim();
+        }
+        const genreMatch = String(personaPromptContext).match(/\*\*Genre:\*\*\s*(.+)/i);
+        if (genreMatch?.[1]) {
+          project.context.personaGenre = genreMatch[1].trim();
+        }
+        const subgenreMatch = String(personaPromptContext).match(/\*\*Subgenre:\*\*\s*(.+)/i);
+        if (subgenreMatch?.[1]) {
+          project.context.personaSubgenre = subgenreMatch[1].trim();
+        }
+        const styleMatch = String(personaPromptContext).match(/\*\*Style Markers:\*\*\s*(.+)/i);
+        if (styleMatch?.[1]) {
+          project.context.personaStyleMarkers = styleMatch[1].trim();
         }
       }
     } catch (error) {
@@ -1086,20 +1098,26 @@ export class ProjectEngine {
     const personaPromptContext = project.context?.personaPromptContext || project.context?.personaContext;
     if (!personaPromptContext) return '';
 
-    const voiceDescription = project.context?.personaVoiceDescription
-      ? `Primary voice description: ${project.context.personaVoiceDescription}\n`
-      : '';
+    const parts: string[] = ['Mandatory persona directive for this step:'];
+
+    if (project.context?.personaGenre) {
+      const genre = project.context.personaGenre + (project.context.personaSubgenre ? ' / ' + project.context.personaSubgenre : '');
+      parts.push(`Target genre: ${genre}. Honor all genre conventions and reader expectations.`);
+    }
+    if (project.context?.personaVoiceDescription) {
+      parts.push(`Voice: ${project.context.personaVoiceDescription}`);
+    }
+    if (project.context?.personaStyleMarkers) {
+      parts.push(`Style markers to embody: ${project.context.personaStyleMarkers}`);
+    }
 
     const stepKind = step.taskType || 'general';
+    parts.push(`Apply the assigned author persona voice to this ${stepKind} step.`);
+    parts.push('Do not drift into a generic assistant voice.');
+    parts.push('Preserve the persona\'s diction, rhythm, tone, imagery, and narrative attitude.');
+    parts.push('If this step is critique or revision, keep the feedback and rewritten prose in the same persona voice unless the user explicitly asks otherwise.');
 
-    return (
-      `Mandatory persona directive for this step:\n` +
-      `${voiceDescription}` +
-      `Apply the assigned author persona voice to this ${stepKind} step.\n` +
-      `Do not drift into a generic assistant voice.\n` +
-      `Preserve the persona's diction, rhythm, tone, imagery, and narrative attitude.\n` +
-      `If this step is critique or revision, keep the feedback and rewritten prose in the same persona voice unless the user explicitly asks otherwise.`
-    );
+    return parts.join('\n');
   }
 
   // ── Novel Pipeline ──

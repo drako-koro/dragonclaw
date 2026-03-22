@@ -2322,7 +2322,7 @@ ${sourceCode.substring(0, 15000)}
     try {
       const provider = services.aiRouter?.selectProvider('general');
       if (!provider) return res.status(503).json({ error: 'No AI provider available. Configure an API key in Settings first.' });
-      const planningModel = services.config.get('ai.ollama.models.planning') || services.config.get('ai.ollama.defaultModel') || services.config.get('ai.ollama.model') || 'qwen3.5:35b';
+      const planningModel = services.config.get('ai.ollama.models.planning') || services.config.get('ai.ollama.defaultModel') || services.config.get('ai.ollama.model') || 'qwen3.5:27b';
       const planningThink = services.config.get('ai.ollama.thinking.planning', true);
       const result = await services.aiRouter.complete({
         provider: provider.id,

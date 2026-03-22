@@ -145,12 +145,19 @@ export class PersonaService {
 
     const lines = [
       `## Author Persona: ${p.penName}`,
-      `**Genre:** ${p.genre}${p.subGenre ? ' / ' + p.subGenre : ''}`,
+      `**Genre:** ${p.genre}`,
     ];
-    if (p.voiceDescription) lines.push(`**Voice & Style:** ${p.voiceDescription}`);
+    if (p.subGenre) lines.push(`**Subgenre:** ${p.subGenre}`);
+    if (p.voiceDescription) lines.push(`**Voice Description:** ${p.voiceDescription}`);
     if (p.styleMarkers.length > 0) lines.push(`**Style Markers:** ${p.styleMarkers.join(', ')}`);
     if (p.bio) lines.push(`**Author Bio:** ${p.bio}`);
     if (p.alsoBy.length > 0) lines.push(`**Also By ${p.penName}:** ${p.alsoBy.join(', ')}`);
+
+    lines.push('');
+    lines.push('**Persona Application Rules:**');
+    lines.push('- All prose output must reflect this persona\'s voice, diction, and style markers.');
+    lines.push('- Genre conventions and reader expectations for ' + (p.genre || 'this genre') + (p.subGenre ? ' / ' + p.subGenre : '') + ' must be honored.');
+    lines.push('- Do not drift into a generic assistant voice. Every sentence should sound like ' + p.penName + ' wrote it.');
 
     return lines.join('\n');
   }
