@@ -5,9 +5,27 @@
  */
 
 import { createHash } from 'crypto';
-import { Agent } from 'undici';
 import { Vault } from '../security/vault.js';
 import { CostTracker } from '../services/costs.js';
+
+// ── Undici Agent for extended body timeout ──
+// Node.js's built-in fetch (undici) has a default bodyTimeout of 300s (5 min).
+// During long thinking phases (e.g. deepseek-r1 with think:true), no stream
+// chunks arrive for extended periods and undici kills the socket.
+// We import Agent from the built-in 'node:undici' to override this.
+let UndiciAgent: any = null;
+try {
+  // Dynamic import to avoid hard failure if undici isn't resolvable
+  const undici = await import('node:undici');
+  UndiciAgent = undici.Agent;
+} catch {
+  try {
+    const undici = await import('undici');
+    UndiciAgent = undici.Agent;
+  } catch {
+    console.warn('[router] Could not import undici Agent — Ollama requests will use default 5-min body timeout');
+  }
+}
 
 // ═══════════════════════════════════════════════════════════
 // Types
@@ -79,12 +97,9 @@ export class AIRouter {
   private vault: Vault;
   private costs: CostTracker;
 
-  // ── Undici Agent with extended body timeout ──
-  // Node.js's built-in fetch (undici) has a default bodyTimeout of 300s (5 min).
-  // During long thinking phases (e.g. deepseek-r1 with think:true), no stream
-  // chunks arrive for extended periods. Undici kills the socket at 5 min,
-  // which is independent of AbortSignal.timeout. This agent overrides that.
-  private ollamaAgent: Agent;
+  // Custom undici dispatcher to override the default 5-min bodyTimeout.
+  // null if undici Agent couldn't be imported (falls back to default fetch).
+  private ollamaDispatcher: any = null;
 
   // ── Prompt Cache ──
   // Caches system prompt hashes so repeated calls with the same soul/style
@@ -99,12 +114,15 @@ export class AIRouter {
     this.vault = vault;
     this.costs = costs;
 
-    const timeoutMs = config.ollama?.requestTimeoutMs || 3600000;
-    this.ollamaAgent = new Agent({
-      bodyTimeout: timeoutMs,
-      headersTimeout: timeoutMs,
-      connectTimeout: 30000,
-    });
+    if (UndiciAgent) {
+      const timeoutMs = config.ollama?.requestTimeoutMs || 3600000;
+      this.ollamaDispatcher = new UndiciAgent({
+        bodyTimeout: timeoutMs,
+        headersTimeout: timeoutMs,
+        connectTimeout: 30000,
+      });
+      console.log(`[router] Undici Agent created — bodyTimeout: ${Math.round(timeoutMs / 60000)}m`);
+    }
   }
 
   async initialize(): Promise<void> {
@@ -399,9 +417,9 @@ export class AIRouter {
   // ── Ollama (streaming mode) ──
   // Uses stream:true so Ollama sends HTTP headers immediately, avoiding
   // Node's default 300s headersTimeout that kills long-running generations.
-  // The custom ollamaAgent overrides undici's bodyTimeout (default 5 min)
-  // to match requestTimeoutMs, preventing premature socket closure during
-  // long thinking phases (e.g. deepseek-r1 with think:true).
+  // If available, the custom ollamaDispatcher overrides undici's bodyTimeout
+  // (default 5 min) to match requestTimeoutMs, preventing premature socket
+  // closure during long thinking phases (e.g. deepseek-r1 with think:true).
   // Chunks are accumulated in memory and returned as a single response.
   private async completeOllama(
     provider: AIProvider,
@@ -409,13 +427,10 @@ export class AIRouter {
   ): Promise<CompletionResponse> {
     const model = this.getModelForRequest(request, provider);
     const think = this.getThinkingForRequest(request, provider.id);
-    const response = await fetch(`${provider.endpoint}/api/chat`, {
+    const fetchOptions: any = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(this.config.ollama?.requestTimeoutMs || 3600000),
-      // @ts-ignore — Node.js fetch supports 'dispatcher' via undici but the
-      // standard RequestInit type does not include it.
-      dispatcher: this.ollamaAgent,
       body: JSON.stringify({
         model,
         messages: [
@@ -429,6 +444,12 @@ export class AIRouter {
           num_predict: request.maxTokens ?? this.config.ollama?.maxTokens ?? provider.maxTokens,
         },
       }),
+    };
+    // Inject the custom undici dispatcher if available (extends bodyTimeout)
+    if (this.ollamaDispatcher) {
+      fetchOptions.dispatcher = this.ollamaDispatcher;
+    }
+    const response = await fetch(`${provider.endpoint}/api/chat`, fetchOptions);
     });
 
     if (!response.ok) {
