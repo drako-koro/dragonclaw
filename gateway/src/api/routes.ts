@@ -15,8 +15,20 @@ import { generateEpubBuffer } from '../services/epub-export.js';
 function isInsufficientAIResponse(text?: string): boolean {
   const cleaned = String(text || '').replace(/```[\s\S]*?```/g, ' ').trim();
   if (!cleaned) return true;
+  // Catch error messages that the AI router returns on provider failure
+  if (isAIErrorResponse(cleaned)) return true;
   const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
   return wordCount < 8 && cleaned.length < 40;
+}
+
+function isAIErrorResponse(text: string): boolean {
+  const errorPatterns = [
+    /having trouble connecting to my AI providers/i,
+    /no AI providers available/i,
+    /provider .+ not found/i,
+    /API error:/i,
+  ];
+  return errorPatterns.some(p => p.test(text));
 }
 
 export function createAPIRoutes(app: Application, gateway: any, rootDir?: string): void {

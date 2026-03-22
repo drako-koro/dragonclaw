@@ -1073,6 +1073,25 @@ class DragonClawGateway {
   }
 
   /**
+   * Check if an AI response is insufficient (too short, empty, or an error message).
+   * Used by the project step runner to detect and retry failed responses.
+   */
+  isInsufficientAIResponse(text?: string): boolean {
+    const cleaned = String(text || '').replace(/```[\s\S]*?```/g, ' ').trim();
+    if (!cleaned) return true;
+    // Detect error messages from failed AI provider calls
+    const errorPatterns = [
+      /having trouble connecting to my AI providers/i,
+      /no AI providers available/i,
+      /provider .+ not found/i,
+      /API error:/i,
+    ];
+    if (errorPatterns.some(p => p.test(cleaned))) return true;
+    const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
+    return wordCount < 8 && cleaned.length < 40;
+  }
+
+  /**
    * Handle slash commands from the dashboard chat.
    * Mirrors bridge command logic but returns strings.
    */
@@ -1725,6 +1744,21 @@ class DragonClawGateway {
             message: `Step failed: ${activeStep.label} — ${String(err)}`,
           });
           return { error: `AI error: ${String(err)}` };
+        }
+
+        // Guard: if the response is still insufficient after retry, fail the step
+        // instead of writing an error message to disk as if it were real content
+        if (gateway.isInsufficientAIResponse(aiResponse)) {
+          const reason = 'Empty, too-short, or error response from AI after retry';
+          gateway.projectEngine.failStep(projectId, activeStep.id, reason);
+          gateway.activityLog.log({
+            type: 'step_failed',
+            source: bridgeSource,
+            goalId: projectId,
+            stepLabel: activeStep.label,
+            message: `Step failed: ${activeStep.label} — ${reason}`,
+          });
+          return { error: reason };
         }
 
         // Word count continuation for novel-pipeline writing steps
