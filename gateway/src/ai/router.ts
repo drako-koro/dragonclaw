@@ -8,25 +8,6 @@ import { createHash } from 'crypto';
 import { Vault } from '../security/vault.js';
 import { CostTracker } from '../services/costs.js';
 
-// ── Undici Agent for extended body timeout ──
-// Node.js's built-in fetch (undici) has a default bodyTimeout of 300s (5 min).
-// During long thinking phases (e.g. deepseek-r1 with think:true), no stream
-// chunks arrive for extended periods and undici kills the socket.
-// We import Agent from the built-in 'node:undici' to override this.
-let UndiciAgent: any = null;
-try {
-  // Dynamic import to avoid hard failure if undici isn't resolvable
-  const undici = await import('node:undici');
-  UndiciAgent = undici.Agent;
-} catch {
-  try {
-    const undici = await import('undici');
-    UndiciAgent = undici.Agent;
-  } catch {
-    console.warn('[router] Could not import undici Agent — Ollama requests will use default 5-min body timeout');
-  }
-}
-
 // ═══════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════
@@ -113,19 +94,29 @@ export class AIRouter {
     this.config = config;
     this.vault = vault;
     this.costs = costs;
-
-    if (UndiciAgent) {
-      const timeoutMs = config.ollama?.requestTimeoutMs || 3600000;
-      this.ollamaDispatcher = new UndiciAgent({
-        bodyTimeout: timeoutMs,
-        headersTimeout: timeoutMs,
-        connectTimeout: 30000,
-      });
-      console.log(`[router] Undici Agent created — bodyTimeout: ${Math.round(timeoutMs / 60000)}m`);
-    }
   }
 
   async initialize(): Promise<void> {
+    // ── Set up undici dispatcher for extended Ollama timeouts ──
+    // Node.js fetch (undici) has a default bodyTimeout of 300s (5 min).
+    // During long thinking phases (e.g. deepseek-r1 with think:true),
+    // no stream chunks arrive and undici kills the socket.
+    // This creates a custom dispatcher with the configured timeout.
+    if (!this.ollamaDispatcher) {
+      try {
+        const { Agent } = await import('undici');
+        const timeoutMs = this.config.ollama?.requestTimeoutMs || 3600000;
+        this.ollamaDispatcher = new Agent({
+          bodyTimeout: timeoutMs,
+          headersTimeout: timeoutMs,
+          connectTimeout: 30000,
+        });
+        console.log(`[router] Undici Agent created — bodyTimeout: ${Math.round(timeoutMs / 60000)}m`);
+      } catch {
+        console.warn('[router] Could not import undici — Ollama requests will use default 5-min body timeout');
+      }
+    }
+
     // Clear any stale providers (important for reinitialize)
     this.providers.clear();
 
