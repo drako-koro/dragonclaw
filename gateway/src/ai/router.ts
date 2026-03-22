@@ -5,6 +5,7 @@
  */
 
 import { createHash } from 'crypto';
+import { Agent } from 'undici';
 import { Vault } from '../security/vault.js';
 import { CostTracker } from '../services/costs.js';
 
@@ -78,6 +79,13 @@ export class AIRouter {
   private vault: Vault;
   private costs: CostTracker;
 
+  // ── Undici Agent with extended body timeout ──
+  // Node.js's built-in fetch (undici) has a default bodyTimeout of 300s (5 min).
+  // During long thinking phases (e.g. deepseek-r1 with think:true), no stream
+  // chunks arrive for extended periods. Undici kills the socket at 5 min,
+  // which is independent of AbortSignal.timeout. This agent overrides that.
+  private ollamaAgent: Agent;
+
   // ── Prompt Cache ──
   // Caches system prompt hashes so repeated calls with the same soul/style
   // context can signal cache hits to providers that support it (e.g. Gemini cachedContent).
@@ -90,6 +98,13 @@ export class AIRouter {
     this.config = config;
     this.vault = vault;
     this.costs = costs;
+
+    const timeoutMs = config.ollama?.requestTimeoutMs || 3600000;
+    this.ollamaAgent = new Agent({
+      bodyTimeout: timeoutMs,
+      headersTimeout: timeoutMs,
+      connectTimeout: 30000,
+    });
   }
 
   async initialize(): Promise<void> {
@@ -384,6 +399,9 @@ export class AIRouter {
   // ── Ollama (streaming mode) ──
   // Uses stream:true so Ollama sends HTTP headers immediately, avoiding
   // Node's default 300s headersTimeout that kills long-running generations.
+  // The custom ollamaAgent overrides undici's bodyTimeout (default 5 min)
+  // to match requestTimeoutMs, preventing premature socket closure during
+  // long thinking phases (e.g. deepseek-r1 with think:true).
   // Chunks are accumulated in memory and returned as a single response.
   private async completeOllama(
     provider: AIProvider,
@@ -395,6 +413,9 @@ export class AIRouter {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(this.config.ollama?.requestTimeoutMs || 3600000),
+      // @ts-ignore — Node.js fetch supports 'dispatcher' via undici but the
+      // standard RequestInit type does not include it.
+      dispatcher: this.ollamaAgent,
       body: JSON.stringify({
         model,
         messages: [
