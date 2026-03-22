@@ -191,15 +191,41 @@ export class AIRouter {
     return this.getActiveProviders().map(p => p.id);
   }
 
+  /**
+   * Health-check Ollama with retries.
+   * Uses a short per-attempt timeout (5 s) independent of the generation
+   * timeout so a cold or slow-starting Ollama still gets a fair chance
+   * without blocking startup for minutes.
+   */
   private async checkOllama(endpoint: string): Promise<boolean> {
-    try {
-      const response = await fetch(`${endpoint}/api/tags`, {
-        signal: AbortSignal.timeout(this.config.ollama?.requestTimeoutMs || 5000),
-      });
-      return response.ok;
-    } catch {
-      return false;
+    const maxRetries = 5;
+    const delayMs = 2000;
+    const healthTimeoutMs = 5000;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(`${endpoint}/api/tags`, {
+          signal: AbortSignal.timeout(healthTimeoutMs),
+        });
+        if (response.ok) {
+          if (attempt > 1) {
+            console.log(`[router] Ollama responded on attempt ${attempt}/${maxRetries}`);
+          }
+          return true;
+        }
+        console.warn(`[router] Ollama health check returned ${response.status} (attempt ${attempt}/${maxRetries})`);
+      } catch (err: any) {
+        const reason = err?.cause?.code || err?.code || err?.message || 'unknown error';
+        console.warn(`[router] Ollama health check failed (attempt ${attempt}/${maxRetries}): ${reason}`);
+      }
+
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
     }
+
+    console.error(`[router] Ollama unreachable at ${endpoint} after ${maxRetries} attempts`);
+    return false;
   }
 
   private getLaneForTaskType(taskType: string): 'planning' | 'drafting' | 'critique' | 'rewrite' | 'final' {
