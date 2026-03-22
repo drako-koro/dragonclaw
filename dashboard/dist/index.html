@@ -1553,6 +1553,16 @@ function openCreateProjectModal(template, serverTemplate) {
         '<div style="font-size:11px;color:var(--muted);margin-top:4px;">Auto uses your local planning, drafting, critique, rewrite, and final-check models from Settings. Force mode uses the default Ollama model for every step.</div>' +
       '</div>' +
       extraFields +
+      '<div class="form-group" id="modalAttachGroup">' +
+        '<label>Reference Document <span style="font-weight:400;color:var(--muted);">(optional)</span></label>' +
+        '<select id="modalAttachDoc">' +
+          '<option value="">None</option>' +
+          '<option value="__upload__">Upload new file...</option>' +
+        '</select>' +
+        '<input type="file" id="modalAttachFile" style="display:none;" accept=".txt,.md,.docx">' +
+        '<div id="modalAttachFileName" style="display:none;font-size:12px;color:var(--accent);margin-top:4px;"></div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:4px;">Attach an outline, manuscript, or notes. The document will be injected into every step so the AI knows what it is working with.</div>' +
+      '</div>' +
       '<div class="modal-actions">' +
         '<button class="secondary" id="modalCancel">Cancel</button>' +
         '<button class="success" id="modalCreate">Create Project</button>' +
@@ -1562,6 +1572,46 @@ function openCreateProjectModal(template, serverTemplate) {
   document.body.appendChild(overlay);
   overlay.querySelector('#modalCancel').addEventListener('click', function() { overlay.remove(); });
   overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+  // ── Populate library documents dropdown ──
+  var attachSelect = document.getElementById('modalAttachDoc');
+  var attachFileInput = document.getElementById('modalAttachFile');
+  var attachFileNameEl = document.getElementById('modalAttachFileName');
+  var pendingAttachFile = null; // holds a File object if user picks "Upload new file"
+
+  api('GET', '/api/documents').then(function(data) {
+    var docs = data.documents || [];
+    docs.forEach(function(d) {
+      var name = d.name || d.filename;
+      var label = name;
+      if (d.wordCount) label += ' (' + d.wordCount.toLocaleString() + ' words)';
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = label;
+      // Insert before the "Upload new file..." option
+      attachSelect.insertBefore(opt, attachSelect.querySelector('option[value="__upload__"]'));
+    });
+  }).catch(function() { /* library unavailable — upload-only is fine */ });
+
+  attachSelect.addEventListener('change', function() {
+    if (this.value === '__upload__') {
+      attachFileInput.click();
+      // Reset select to "None" so re-clicking "Upload new file" triggers change again
+      this.value = '';
+    } else {
+      pendingAttachFile = null;
+      attachFileNameEl.style.display = 'none';
+    }
+  });
+
+  attachFileInput.addEventListener('change', function() {
+    var file = this.files[0];
+    if (!file) return;
+    pendingAttachFile = file;
+    attachFileNameEl.textContent = '\uD83D\uDCC4 ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+    attachFileNameEl.style.display = 'block';
+    attachSelect.value = '';
+  });
 
   overlay.querySelector('#modalCreate').addEventListener('click', function() {
     var title = document.getElementById('modalTitle').value.trim();
@@ -1603,29 +1653,57 @@ function openCreateProjectModal(template, serverTemplate) {
       }
 
       if (projectId) {
-        showToast('Project created! Starting execution...', 'success');
-        loadProjects();
-        // Auto-execute: fire in background, open detail view, poll for progress
-        setTimeout(function() {
-          openProjectDetail(projectId);
-          // Fire auto-execute (this is a long-running request — we don't block on it)
-          api('POST', '/api/projects/' + projectId + '/auto-execute').then(function(result) {
-            var completed = (result.results || []).filter(function(r) { return r.success; }).length;
-            showToast('Project finished! ' + completed + ' steps completed.', 'success');
-            loadProjects();
-            if (currentDetailProject === projectId) openProjectDetail(projectId);
-          }).catch(function(err) {
-            showToast('Execution error: ' + err.message, 'error');
-            loadProjects();
-            if (currentDetailProject === projectId) openProjectDetail(projectId);
-          });
-          // Poll for step progress while running
-          var pollId = setInterval(function() {
-            loadProjects();
-            if (currentDetailProject === projectId) openProjectDetail(projectId);
-          }, 8000);
-          setTimeout(function() { clearInterval(pollId); }, 600000); // 10 min max poll
-        }, 500);
+        // ── Attach document if one was selected or uploaded ──
+        var selectedDoc = attachSelect.value;
+        var attachPromise;
+
+        if (pendingAttachFile) {
+          // User picked a new file to upload
+          var formData = new FormData();
+          formData.append('file', pendingAttachFile);
+          showToast('Attaching ' + pendingAttachFile.name + '...', 'info');
+          attachPromise = apiRaw('POST', '/api/projects/' + projectId + '/upload', formData);
+        } else if (selectedDoc && selectedDoc !== '__upload__') {
+          // User picked an existing library document
+          showToast('Attaching ' + selectedDoc + '...', 'info');
+          attachPromise = api('POST', '/api/projects/' + projectId + '/attach', { filename: selectedDoc });
+        } else {
+          attachPromise = Promise.resolve(null);
+        }
+
+        attachPromise.then(function(attachResult) {
+          if (attachResult) {
+            showToast('Document attached! Starting execution...', 'success');
+          } else {
+            showToast('Project created! Starting execution...', 'success');
+          }
+          loadProjects();
+          // Auto-execute: fire in background, open detail view, poll for progress
+          setTimeout(function() {
+            openProjectDetail(projectId);
+            // Fire auto-execute (this is a long-running request — we don't block on it)
+            api('POST', '/api/projects/' + projectId + '/auto-execute').then(function(result) {
+              var completed = (result.results || []).filter(function(r) { return r.success; }).length;
+              showToast('Project finished! ' + completed + ' steps completed.', 'success');
+              loadProjects();
+              if (currentDetailProject === projectId) openProjectDetail(projectId);
+            }).catch(function(err) {
+              showToast('Execution error: ' + err.message, 'error');
+              loadProjects();
+              if (currentDetailProject === projectId) openProjectDetail(projectId);
+            });
+            // Poll for step progress while running
+            var pollId = setInterval(function() {
+              loadProjects();
+              if (currentDetailProject === projectId) openProjectDetail(projectId);
+            }, 8000);
+            setTimeout(function() { clearInterval(pollId); }, 600000); // 10 min max poll
+          }, 500);
+        }).catch(function(attachErr) {
+          showToast('Document attach failed: ' + attachErr.message + ' — project created without it', 'error');
+          loadProjects();
+          setTimeout(function() { openProjectDetail(projectId); }, 300);
+        });
       } else {
         showToast('Project created!', 'success');
         loadProjects();
