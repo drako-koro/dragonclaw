@@ -34,20 +34,9 @@ export class ConfigService {
     if (process.env.DRAGONCLAW_PORT) this.set('server.port', parseInt(process.env.DRAGONCLAW_PORT));
     if (process.env.DRAGONCLAW_PRESET) this.set('security.permissionPreset', process.env.DRAGONCLAW_PRESET);
 
-    // Normalize Ollama model settings so old configs keep working
-    const ollama = this.config.ai?.ollama;
-    if (ollama) {
-      if (!ollama.defaultModel && ollama.model) ollama.defaultModel = ollama.model;
-      if (!ollama.model && ollama.defaultModel) ollama.model = ollama.defaultModel;
-      if (!ollama.models || typeof ollama.models !== 'object') ollama.models = {};
-      if (!ollama.models.planning) ollama.models.planning = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
-      if (!ollama.models.drafting) ollama.models.drafting = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
-      if (!ollama.models.critique) ollama.models.critique = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
-      if (!ollama.models.rewrite) ollama.models.rewrite = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
-      if (!ollama.models.final) ollama.models.final = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
-      if (!ollama.thinking || typeof ollama.thinking !== 'object') ollama.thinking = {};
-    }
-
+    // Normalize AI config — fills in correct per-lane defaults for
+    // Ollama models, thinking flags, Claude config, and provider routing
+    this.normalizeDragonClawAIConfig();
   }
 
   get(path: string, defaultValue?: any): any {
@@ -90,6 +79,8 @@ export class ConfigService {
 
   private normalizeDragonClawAIConfig(): void {
     const ai = this.config.ai || (this.config.ai = {});
+
+    // ── Ollama defaults ──
     const ollama = ai.ollama || (ai.ollama = {});
     const defaultModel = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
     ollama.defaultModel = defaultModel;
@@ -110,6 +101,30 @@ export class ConfigService {
       rewrite: typeof ollama.thinking?.rewrite === 'boolean' ? ollama.thinking.rewrite : false,
       final: typeof ollama.thinking?.final === 'boolean' ? ollama.thinking.final : true,
     };
+
+    // ── Claude defaults ──
+    const claude = ai.claude || (ai.claude = {});
+    const claudeDefault = claude.defaultModel || 'claude-sonnet-4-6';
+    claude.defaultModel = claudeDefault;
+    claude.baseUrl = claude.baseUrl || 'https://api.anthropic.com/v1';
+    claude.maxTokens = claude.maxTokens || 131072;
+    claude.requestTimeoutMs = claude.requestTimeoutMs || 3600000;
+    claude.models = {
+      planning: claude.models?.planning || claudeDefault,
+      drafting: claude.models?.drafting || 'claude-opus-4-6',
+      critique: claude.models?.critique || 'claude-opus-4-6',
+      rewrite: claude.models?.rewrite || claudeDefault,
+      final: claude.models?.final || 'claude-opus-4-6',
+    };
+    claude.thinking = {
+      planning: typeof claude.thinking?.planning === 'boolean' ? claude.thinking.planning : true,
+      drafting: typeof claude.thinking?.drafting === 'boolean' ? claude.thinking.drafting : false,
+      critique: typeof claude.thinking?.critique === 'boolean' ? claude.thinking.critique : true,
+      rewrite: typeof claude.thinking?.rewrite === 'boolean' ? claude.thinking.rewrite : false,
+      final: typeof claude.thinking?.final === 'boolean' ? claude.thinking.final : true,
+    };
+
+    // ── Provider routing defaults ──
     ai.defaultProvider = ai.defaultProvider || 'ollama';
     ai.providers = {
       planning: ai.providers?.planning || ai.defaultProvider,

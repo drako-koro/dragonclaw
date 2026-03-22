@@ -27,7 +27,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
-      version: '4.0.0',
+      version: '5.0.0',
       name: 'DragonClaw',
       brand: 'Writing Secrets',
       uptime: process.uptime(),
@@ -348,7 +348,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   });
 
   // Update a single config value (for dashboard settings)
-  app.post('/api/config/update', (req: Request, res: Response) => {
+  app.post('/api/config/update', async (req: Request, res: Response) => {
     const { path, value } = req.body;
     if (!path) return res.status(400).json({ error: 'path required' });
     const safePaths = [
@@ -368,8 +368,15 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
     if (!safePaths.includes(path)) {
       return res.status(403).json({ error: 'Config path not allowed' });
     }
-    services.config.set(path, value);
-    res.json({ success: true, path, value });
+    await services.config.setAndPersist(path, value);
+
+    // Re-initialize AI providers when AI config changes so they take effect immediately
+    let refreshedProviders: string[] | undefined;
+    if (path.startsWith('ai.')) {
+      refreshedProviders = await services.aiRouter.reinitialize();
+    }
+
+    res.json({ success: true, path, value, refreshedProviders });
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -472,7 +479,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
 
   app.post('/api/discord/users', async (req: Request, res: Response) => {
     const users = Array.isArray(req.body?.users) ? req.body.users : [];
-    const valid = users.every((u: any) => typeof u === 'string' && /^\\d+$/.test(u));
+    const valid = users.every((u: any) => typeof u === 'string' && /^\d+$/.test(u));
     if (!valid) return res.status(400).json({ error: 'Each user ID must be a numeric string' });
     await services.config.setAndPersist('bridges.discord.allowedUsers', users);
     gateway.updateDiscordUsers?.(users);
