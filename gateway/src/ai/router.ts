@@ -5,6 +5,7 @@
  */
 
 import { createHash } from 'crypto';
+import http from 'http';
 import { Vault } from '../security/vault.js';
 import { CostTracker } from '../services/costs.js';
 
@@ -78,10 +79,6 @@ export class AIRouter {
   private vault: Vault;
   private costs: CostTracker;
 
-  // Custom undici dispatcher to override the default 5-min bodyTimeout.
-  // null if undici Agent couldn't be imported (falls back to default fetch).
-  private ollamaDispatcher: any = null;
-
   // ── Prompt Cache ──
   // Caches system prompt hashes so repeated calls with the same soul/style
   // context can signal cache hits to providers that support it (e.g. Gemini cachedContent).
@@ -97,28 +94,6 @@ export class AIRouter {
   }
 
   async initialize(): Promise<void> {
-    // ── Extend undici's default body timeout for long AI generations ──
-    // Node.js fetch (undici) has a default bodyTimeout of 300s (5 min).
-    // During long thinking phases (e.g. deepseek-r1 with think:true),
-    // no stream chunks arrive and undici kills the socket.
-    // setGlobalDispatcher replaces the default for ALL fetch calls.
-    if (!this.ollamaDispatcher) {
-      try {
-        const { Agent, setGlobalDispatcher } = await import('undici');
-        const timeoutMs = this.config.ollama?.requestTimeoutMs || 3600000;
-        const agent = new Agent({
-          bodyTimeout: timeoutMs,
-          headersTimeout: timeoutMs,
-          connectTimeout: 30000,
-        });
-        setGlobalDispatcher(agent);
-        this.ollamaDispatcher = true; // Flag so we don't set it again on reinitialize
-        console.log(`[router] Global fetch timeout extended — bodyTimeout: ${Math.round(timeoutMs / 60000)}m`);
-      } catch {
-        console.warn('[router] Could not import undici — Ollama requests will use default 5-min body timeout');
-      }
-    }
-
     // Clear any stale providers (important for reinitialize)
     this.providers.clear();
 
@@ -407,108 +382,127 @@ export class AIRouter {
     return createHash('sha256').update(prompt).digest('hex');
   }
 
-  // ── Ollama (streaming mode) ──
-  // Uses stream:true so Ollama sends HTTP headers immediately, avoiding
-  // Node's default 300s headersTimeout that kills long-running generations.
-  // If available, the custom ollamaDispatcher overrides undici's bodyTimeout
-  // (default 5 min) to match requestTimeoutMs, preventing premature socket
-  // closure during long thinking phases (e.g. deepseek-r1 with think:true).
-  // Chunks are accumulated in memory and returned as a single response.
+  // ── Ollama (http module — bypasses undici/fetch entirely) ──
+  // Node.js's built-in fetch uses undici which has a hardcoded 5-min body
+  // timeout that kills long-running generations (especially with think:true).
+  // Using the http module directly gives full socket-level timeout control.
   private async completeOllama(
     provider: AIProvider,
     request: CompletionRequest
   ): Promise<CompletionResponse> {
     const model = this.getModelForRequest(request, provider);
     const think = this.getThinkingForRequest(request, provider.id);
-    const fetchOptions: any = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(this.config.ollama?.requestTimeoutMs || 3600000),
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: request.system },
-          ...request.messages,
-        ],
-        stream: true,
-        think,
-        options: {
-          temperature: request.temperature ?? this.config.defaultTemperature ?? 0.7,
-          num_predict: request.maxTokens ?? this.config.ollama?.maxTokens ?? provider.maxTokens,
+    const timeoutMs = this.config.ollama?.requestTimeoutMs || 3600000;
+
+    const payload = JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: request.system },
+        ...request.messages,
+      ],
+      stream: true,
+      think,
+      options: {
+        temperature: request.temperature ?? this.config.defaultTemperature ?? 0.7,
+        num_predict: request.maxTokens ?? this.config.ollama?.maxTokens ?? provider.maxTokens,
+      },
+    });
+
+    const url = new URL(`${provider.endpoint}/api/chat`);
+
+    return new Promise<CompletionResponse>((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: url.hostname,
+          port: url.port || 11434,
+          path: url.pathname,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+          },
+          timeout: timeoutMs,
         },
-      }),
-    };
-    const response = await fetch(`${provider.endpoint}/api/chat`, fetchOptions);
-
-    if (!response.ok) {
-      // Try to read error body
-      let errText = response.statusText || 'Ollama request failed';
-      try {
-        const errData = await response.json() as any;
-        errText = errData?.error || errData?.message?.content || errText;
-      } catch { /* use statusText */ }
-      throw new Error(`Ollama error (${model}): ${errText}`);
-    }
-
-    if (!response.body) {
-      throw new Error(`Ollama error (${model}): no response body`);
-    }
-
-    // Read the NDJSON stream and accumulate content
-    let content = '';
-    let promptEvalCount = 0;
-    let evalCount = 0;
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // Process complete lines (Ollama sends one JSON object per line)
-      let newlineIdx: number;
-      while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, newlineIdx).trim();
-        buffer = buffer.slice(newlineIdx + 1);
-
-        if (!line) continue;
-
-        try {
-          const chunk = JSON.parse(line);
-
-          // Accumulate content tokens
-          if (chunk.message?.content) {
-            content += chunk.message.content;
+        (res) => {
+          if (res.statusCode !== 200) {
+            let errBody = '';
+            res.on('data', (chunk: Buffer) => { errBody += chunk.toString(); });
+            res.on('end', () => {
+              let errText = res.statusMessage || 'Ollama request failed';
+              try {
+                const errData = JSON.parse(errBody);
+                errText = errData?.error || errData?.message?.content || errText;
+              } catch { /* use statusMessage */ }
+              reject(new Error(`Ollama error (${model}): ${errText}`));
+            });
+            return;
           }
 
-          // Final chunk carries token counts and done flag
-          if (chunk.done) {
-            promptEvalCount = chunk.prompt_eval_count || 0;
-            evalCount = chunk.eval_count || 0;
-          }
+          // Read the NDJSON stream and accumulate content
+          let content = '';
+          let promptEvalCount = 0;
+          let evalCount = 0;
+          let buffer = '';
 
-          // Surface errors mid-stream
-          if (chunk.error) {
-            throw new Error(`Ollama stream error (${model}): ${chunk.error}`);
-          }
-        } catch (parseErr: any) {
-          // Only rethrow if it's our own error, not a JSON parse issue on a partial line
-          if (parseErr.message?.startsWith('Ollama stream error')) throw parseErr;
-          // Otherwise skip malformed lines (shouldn't happen with complete lines)
+          res.on('data', (chunk: Buffer) => {
+            buffer += chunk.toString();
+
+            let newlineIdx: number;
+            while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
+              const line = buffer.slice(0, newlineIdx).trim();
+              buffer = buffer.slice(newlineIdx + 1);
+
+              if (!line) continue;
+
+              try {
+                const parsed = JSON.parse(line);
+
+                if (parsed.message?.content) {
+                  content += parsed.message.content;
+                }
+
+                if (parsed.done) {
+                  promptEvalCount = parsed.prompt_eval_count || 0;
+                  evalCount = parsed.eval_count || 0;
+                }
+
+                if (parsed.error) {
+                  reject(new Error(`Ollama stream error (${model}): ${parsed.error}`));
+                  req.destroy();
+                  return;
+                }
+              } catch {
+                // Skip malformed JSON lines
+              }
+            }
+          });
+
+          res.on('end', () => {
+            resolve({
+              text: content.trim(),
+              tokensUsed: promptEvalCount + evalCount,
+              estimatedCost: 0,
+              provider: 'ollama',
+            });
+          });
+
+          res.on('error', (err) => {
+            reject(new Error(`Ollama stream error (${model}): ${err.message}`));
+          });
         }
-      }
-    }
+      );
 
-    return {
-      text: content.trim(),
-      tokensUsed: promptEvalCount + evalCount,
-      estimatedCost: 0,
-      provider: 'ollama',
-    };
+      req.on('timeout', () => {
+        req.destroy(new Error(`Ollama request timed out after ${Math.round(timeoutMs / 60000)}m`));
+      });
+
+      req.on('error', (err) => {
+        reject(new Error(`Ollama connection error (${model}): ${err.message}`));
+      });
+
+      req.write(payload);
+      req.end();
+    });
   }
 
   // ── Google Gemini ──
