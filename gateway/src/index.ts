@@ -165,25 +165,36 @@ class DragonClawGateway {
     }
 
     // ── Ollama Hardware Optimization Check (macOS Apple Silicon) ──
+    // These env vars are set for the Ollama menu bar app via launchctl, not for
+    // DragonClaw's process. We check launchctl getenv to see if they're configured.
     if (process.platform === 'darwin' && providers.some(p => p.id === 'ollama')) {
-      const tips: string[] = [];
-      if (!process.env.OLLAMA_KEEP_ALIVE) {
-        tips.push('OLLAMA_KEEP_ALIVE=-1 (keep model in memory, skip reload delays)');
-      }
-      if (!process.env.OLLAMA_FLASH_ATTENTION) {
-        tips.push('OLLAMA_FLASH_ATTENTION=1 (faster attention on Apple Silicon)');
-      }
-      if (!process.env.OLLAMA_KV_CACHE_TYPE) {
-        tips.push('OLLAMA_KV_CACHE_TYPE=q8_0 (reduce KV cache memory usage)');
-      }
-      if (tips.length > 0) {
-        console.log(`  💡 Ollama performance tip: set these via launchctl for best results on Apple Silicon:`);
-        for (const tip of tips) {
-          console.log(`     launchctl setenv ${tip.split(' (')[0]}`);
+      try {
+        const { execSync } = await import('child_process');
+        const checkEnv = (name: string): boolean => {
+          try {
+            const val = execSync(`launchctl getenv ${name}`, { encoding: 'utf-8', timeout: 2000 }).trim();
+            return val.length > 0;
+          } catch {
+            return false;
+          }
+        };
+
+        const tips: string[] = [];
+        if (!checkEnv('OLLAMA_KEEP_ALIVE')) tips.push('OLLAMA_KEEP_ALIVE "-1"');
+        if (!checkEnv('OLLAMA_FLASH_ATTENTION')) tips.push('OLLAMA_FLASH_ATTENTION "1"');
+        if (!checkEnv('OLLAMA_KV_CACHE_TYPE')) tips.push('OLLAMA_KV_CACHE_TYPE "q8_0"');
+
+        if (tips.length > 0) {
+          console.log(`  💡 Ollama performance tip: set these via launchctl for best results on Apple Silicon:`);
+          for (const tip of tips) {
+            console.log(`     launchctl setenv ${tip}`);
+          }
+          console.log(`     Then restart the Ollama app.`);
+        } else {
+          console.log(`  ✓ Ollama: Apple Silicon optimizations detected`);
         }
-        console.log(`     Then restart the Ollama app.`);
-      } else {
-        console.log(`  ✓ Ollama: Apple Silicon optimizations detected`);
+      } catch {
+        // Non-fatal — skip the check if launchctl isn't available
       }
     }
 
