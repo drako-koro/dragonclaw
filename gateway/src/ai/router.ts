@@ -450,7 +450,6 @@ export class AIRouter {
       fetchOptions.dispatcher = this.ollamaDispatcher;
     }
     const response = await fetch(`${provider.endpoint}/api/chat`, fetchOptions);
-    });
 
     if (!response.ok) {
       // Try to read error body
