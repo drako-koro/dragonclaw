@@ -109,7 +109,7 @@ export class AIRouter {
           tier: 'free',
           available: true,
           endpoint: this.config.ollama?.endpoint || 'http://localhost:11434',
-          maxTokens: 4096,
+          maxTokens: 131072,
           costPer1kInput: 0,
           costPer1kOutput: 0,
         });
@@ -126,7 +126,7 @@ export class AIRouter {
         tier: 'free',
         available: true,
         endpoint: 'https://generativelanguage.googleapis.com/v1beta',
-        maxTokens: 65536,
+        maxTokens: 131072,
         costPer1kInput: 0, // Free tier
         costPer1kOutput: 0,
       });
@@ -142,7 +142,7 @@ export class AIRouter {
         tier: 'cheap',
         available: true,
         endpoint: 'https://api.deepseek.com/v1',
-        maxTokens: 4096,
+        maxTokens: 131072,
         costPer1kInput: 0.00014,
         costPer1kOutput: 0.00028,
       });
@@ -158,7 +158,7 @@ export class AIRouter {
         tier: 'paid',
         available: true,
         endpoint: 'https://api.anthropic.com/v1',
-        maxTokens: 4096,
+        maxTokens: 131072,
         costPer1kInput: 0.003,
         costPer1kOutput: 0.015,
       });
@@ -174,7 +174,7 @@ export class AIRouter {
         tier: 'paid',
         available: true,
         endpoint: 'https://api.openai.com/v1',
-        maxTokens: 4096,
+        maxTokens: 131072,
         costPer1kInput: 0.0025,
         costPer1kOutput: 0.01,
       });
@@ -365,7 +365,7 @@ export class AIRouter {
     const response = await fetch(`${provider.endpoint}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(this.config.ollama?.requestTimeoutMs || 600000),
+      signal: AbortSignal.timeout(this.config.ollama?.requestTimeoutMs || 3600000),
       body: JSON.stringify({
         model,
         messages: [

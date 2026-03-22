@@ -1397,7 +1397,7 @@ Description: ${description}`;
         provider: provider.id,
         system: plannerPrompt,
         messages: [{ role: 'user', content: `Plan the steps to accomplish: ${description}` }],
-        maxTokens: 4096,
+        maxTokens: 131072,
         temperature: 0.3,
       });
 

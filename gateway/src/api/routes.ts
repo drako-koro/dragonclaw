@@ -2131,7 +2131,7 @@ ${sourceCode.substring(0, 15000)}
         provider: provider.id,
         system: 'You are a technical documentation expert. Generate DragonClaw SKILL.md files from source code analysis.',
         messages: [{ role: 'user', content: ingestPrompt }],
-        maxTokens: 4096,
+        maxTokens: 131072,
         temperature: 0.3,
       });
 
@@ -2208,7 +2208,7 @@ ${sourceCode.substring(0, 15000)}
           role: 'user' as const,
           content: `Create an author persona for someone who writes ${genre}. ${description || ''}\n\nReturn JSON with these fields:\n- penName: a believable pen name for this genre\n- genre: the main genre\n- subGenre: a specific subgenre\n- voiceDescription: 1-2 sentences describing their writing voice/style\n- styleMarkers: array of 3-5 style descriptors (e.g. "witty dialogue", "slow burn")\n- bio: a 2-3 sentence author bio in third person\n\nReturn ONLY the JSON object.`,
         }],
-        maxTokens: 500,
+        maxTokens: 8000,
         taskType: 'general',
         model: provider.id === 'ollama' ? planningModel : undefined,
         think: provider.id === 'ollama' ? planningThink : undefined,
@@ -2297,7 +2297,7 @@ ${sourceCode.substring(0, 15000)}
           role: 'user' as const,
           content: `Write a professional author bio for a pen name "${persona.penName}" who writes ${persona.genre}${persona.subGenre ? ' (' + persona.subGenre + ')' : ''}. Style: ${persona.voiceDescription || 'engaging and professional'}. Style markers: ${persona.styleMarkers.join(', ') || 'none specified'}. Write in third person, 2-3 sentences, suitable for the back of a book. Return ONLY the bio text.`,
         }],
-        maxTokens: 300,
+        maxTokens: 4800,
       });
       if (result.text) {
         await personas.update(persona.id, { bio: result.text.trim() });

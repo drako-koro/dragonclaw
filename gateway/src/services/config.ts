@@ -94,8 +94,8 @@ export class ConfigService {
     const defaultModel = ollama.defaultModel || ollama.model || 'qwen3.5:35b';
     ollama.defaultModel = defaultModel;
     ollama.model = defaultModel;
-    ollama.maxTokens = ollama.maxTokens || 4096;
-    ollama.requestTimeoutMs = ollama.requestTimeoutMs || 600000;
+    ollama.maxTokens = ollama.maxTokens || 131072;
+    ollama.requestTimeoutMs = ollama.requestTimeoutMs || 3600000;
     ollama.models = {
       planning: ollama.models?.planning || 'deepseek-r1:32b',
       drafting: ollama.models?.drafting || 'qwen3.5:35b',

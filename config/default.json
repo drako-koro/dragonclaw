@@ -29,8 +29,8 @@
         "rewrite": false,
         "final": true
       },
-      "maxTokens": 4096,
-      "requestTimeoutMs": 600000
+      "maxTokens": 131072,
+      "requestTimeoutMs": 3600000
     },
     "gemini": {
       "model": "gemini-2.5-flash"
@@ -64,14 +64,14 @@
         "final": "medium"
       },
       "thinkingBudgetTokens": {
-        "planning": 2048,
-        "drafting": 2048,
-        "critique": 2048,
-        "rewrite": 2048,
-        "final": 2048
+        "planning": 65536,
+        "drafting": 65536,
+        "critique": 65536,
+        "rewrite": 65536,
+        "final": 65536
       },
-      "maxTokens": 4096,
-      "requestTimeoutMs": 600000,
+      "maxTokens": 131072,
+      "requestTimeoutMs": 3600000,
       "costPer1kInput": 0,
       "costPer1kOutput": 0
     },

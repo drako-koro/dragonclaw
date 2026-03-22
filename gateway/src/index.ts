@@ -450,7 +450,7 @@ class DragonClawGateway {
             provider: provider.id,
             system: 'You are DragonClaw, an AI writing agent for authors. Be detailed, actionable, and expert-level.',
             messages: [{ role: 'user' as const, content: task.prompt }],
-            maxTokens: 2000,
+            maxTokens: 32000,
           });
 
           if (result.text && result.text.length > 20) {
