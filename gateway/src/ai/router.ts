@@ -97,21 +97,23 @@ export class AIRouter {
   }
 
   async initialize(): Promise<void> {
-    // ── Set up undici dispatcher for extended Ollama timeouts ──
+    // ── Extend undici's default body timeout for long AI generations ──
     // Node.js fetch (undici) has a default bodyTimeout of 300s (5 min).
     // During long thinking phases (e.g. deepseek-r1 with think:true),
     // no stream chunks arrive and undici kills the socket.
-    // This creates a custom dispatcher with the configured timeout.
+    // setGlobalDispatcher replaces the default for ALL fetch calls.
     if (!this.ollamaDispatcher) {
       try {
-        const { Agent } = await import('undici');
+        const { Agent, setGlobalDispatcher } = await import('undici');
         const timeoutMs = this.config.ollama?.requestTimeoutMs || 3600000;
-        this.ollamaDispatcher = new Agent({
+        const agent = new Agent({
           bodyTimeout: timeoutMs,
           headersTimeout: timeoutMs,
           connectTimeout: 30000,
         });
-        console.log(`[router] Undici Agent created — bodyTimeout: ${Math.round(timeoutMs / 60000)}m`);
+        setGlobalDispatcher(agent);
+        this.ollamaDispatcher = true; // Flag so we don't set it again on reinitialize
+        console.log(`[router] Global fetch timeout extended — bodyTimeout: ${Math.round(timeoutMs / 60000)}m`);
       } catch {
         console.warn('[router] Could not import undici — Ollama requests will use default 5-min body timeout');
       }
@@ -436,10 +438,6 @@ export class AIRouter {
         },
       }),
     };
-    // Inject the custom undici dispatcher if available (extends bodyTimeout)
-    if (this.ollamaDispatcher) {
-      fetchOptions.dispatcher = this.ollamaDispatcher;
-    }
     const response = await fetch(`${provider.endpoint}/api/chat`, fetchOptions);
 
     if (!response.ok) {
