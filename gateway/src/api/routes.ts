@@ -27,7 +27,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
-      version: '5.0.0',
+      version: '4.0.0',
       name: 'DragonClaw',
       brand: 'Writing Secrets',
       uptime: process.uptime(),
@@ -348,7 +348,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   });
 
   // Update a single config value (for dashboard settings)
-  app.post('/api/config/update', async (req: Request, res: Response) => {
+  app.post('/api/config/update', (req: Request, res: Response) => {
     const { path, value } = req.body;
     if (!path) return res.status(400).json({ error: 'path required' });
     const safePaths = [
@@ -368,15 +368,8 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
     if (!safePaths.includes(path)) {
       return res.status(403).json({ error: 'Config path not allowed' });
     }
-    await services.config.setAndPersist(path, value);
-
-    // Re-initialize AI providers when AI config changes so they take effect immediately
-    let refreshedProviders: string[] | undefined;
-    if (path.startsWith('ai.')) {
-      refreshedProviders = await services.aiRouter.reinitialize();
-    }
-
-    res.json({ success: true, path, value, refreshedProviders });
+    services.config.set(path, value);
+    res.json({ success: true, path, value });
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -479,7 +472,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
 
   app.post('/api/discord/users', async (req: Request, res: Response) => {
     const users = Array.isArray(req.body?.users) ? req.body.users : [];
-    const valid = users.every((u: any) => typeof u === 'string' && /^\d+$/.test(u));
+    const valid = users.every((u: any) => typeof u === 'string' && /^\\d+$/.test(u));
     if (!valid) return res.status(400).json({ error: 'Each user ID must be a numeric string' });
     await services.config.setAndPersist('bridges.discord.allowedUsers', users);
     gateway.updateDiscordUsers?.(users);
@@ -1444,6 +1437,129 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
       preview: textContent.substring(0, 200),
       isLarge,
       savedToLibrary: isLarge,
+    });
+  });
+
+  // ── Attach a Library Document to a Project ──
+  // Links an existing document from workspace/documents/ into project.context
+  // so the pipeline injects it into step prompts at execution time.
+  app.post('/api/projects/:id/attach', async (req: Request, res: Response) => {
+    const engine = gateway.getProjectEngine?.();
+    if (!engine) {
+      return res.status(503).json({ error: 'Project engine not initialized' });
+    }
+    const project = engine.getProject(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const { filename } = req.body;
+    if (!filename || typeof filename !== 'string') {
+      return res.status(400).json({ error: 'filename required' });
+    }
+    // Path traversal guard
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    const { join: j } = await import('path');
+    const { readFile: rf } = await import('fs/promises');
+    const { existsSync: ex } = await import('fs');
+
+    const docsDir = j(baseDir, 'workspace', 'documents');
+    const filePath = j(docsDir, filename);
+
+    if (!ex(filePath)) {
+      return res.status(404).json({ error: `Document "${filename}" not found in library` });
+    }
+
+    // Read text content
+    let textContent = '';
+    const ext = filename.split('.').pop()?.toLowerCase();
+
+    if (ext === 'txt' || ext === 'md') {
+      textContent = await rf(filePath, 'utf-8');
+    } else if (ext === 'docx') {
+      // Check for pre-extracted text companion file (created by library upload)
+      const extractedPath = j(docsDir, filename.replace(/\.docx$/i, '.extracted.txt'));
+      if (ex(extractedPath)) {
+        textContent = await rf(extractedPath, 'utf-8');
+      } else {
+        // Extract inline from the docx
+        try {
+          const AdmZip = (await import('adm-zip')).default;
+          const zip = new AdmZip(filePath);
+          const docEntry = zip.getEntry('word/document.xml');
+          if (docEntry) {
+            const xml = docEntry.getData().toString('utf-8');
+            const paragraphs: string[] = [];
+            const paraMatches = xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || [];
+            for (const para of paraMatches) {
+              const textParts = para.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+              if (textParts) {
+                const line = textParts.map(t => t.replace(/<[^>]+>/g, '')).join('');
+                if (line.trim()) paragraphs.push(line);
+              }
+            }
+            textContent = paragraphs.join('\n\n');
+          }
+        } catch (e) {
+          textContent = '[Failed to parse .docx: ' + String(e) + ']';
+        }
+      }
+    } else {
+      return res.status(400).json({ error: `Unsupported file type ".${ext}". Use .txt, .md, or .docx` });
+    }
+
+    if (!textContent.trim()) {
+      return res.status(400).json({ error: 'Document appears to be empty or could not be read' });
+    }
+
+    const wordCount = textContent.split(/\s+/).filter(Boolean).length;
+    const LARGE_THRESHOLD = 15000;
+    const isLarge = wordCount > LARGE_THRESHOLD;
+
+    // Ensure project context exists
+    if (!project.context) project.context = {};
+
+    // Store upload metadata
+    if (!project.context.uploads) project.context.uploads = [];
+    project.context.uploads.push({
+      filename,
+      wordCount,
+      preview: textContent.substring(0, 500),
+      uploadedAt: new Date().toISOString(),
+      isLarge,
+      attachedFromLibrary: true,
+    });
+
+    // Wire into project context using the same logic as the upload endpoint
+    if (isLarge) {
+      // For large documents: store the library path for on-demand reading at execution time
+      const textFilename = ext === 'docx'
+        ? filename.replace(/\.docx$/i, '.extracted.txt')
+        : filename;
+      const textPath = j(docsDir, textFilename);
+      // If a .txt version exists use that path, otherwise use the original
+      project.context.documentLibraryFile = ex(textPath) ? textPath : filePath;
+      project.context.documentWordCount = wordCount;
+      // Store a brief excerpt so the AI knows what it is working with
+      if (!project.context.uploadedContent) project.context.uploadedContent = '';
+      project.context.uploadedContent += `\n\n--- Attached from library: ${filename} (${wordCount.toLocaleString()} words) ---\n`;
+      project.context.uploadedContent += textContent.substring(0, 2000);
+      project.context.uploadedContent += `\n\n[...${wordCount.toLocaleString()} words total — smart excerpt will be injected at execution time...]\n`;
+    } else {
+      // Small document: store inline
+      if (!project.context.uploadedContent) project.context.uploadedContent = '';
+      project.context.uploadedContent += `\n\n--- Attached from library: ${filename} ---\n${textContent}`;
+    }
+
+    res.json({
+      success: true,
+      filename,
+      wordCount,
+      preview: textContent.substring(0, 200),
+      isLarge,
+      attachedFromLibrary: true,
     });
   });
 
